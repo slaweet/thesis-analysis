@@ -1,0 +1,16 @@
+*.py[co]
+*.sw[po]
+*.bak
+*.mo
+*.orig
+*~
+.project
+.pydevproject
+.sass-cache
+.settings
+*.log
+.django_cache
+.ropeproject
+node_modules
+data/
+plot/
