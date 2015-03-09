@@ -2,13 +2,21 @@
 
 import matplotlib.pyplot as plt
 import load_data
+import divider
+import pandas as pd
+import re
+from main import all_subclasses
 
 DATA_DIR = 'data/'
 PLOT_DIR = 'plot/'
 
 
 class Command(object):
-    name = 'command'
+    kind = 'bar'
+
+    @staticmethod
+    def name(self):
+        return convert_from_cammel_case(self.__name__)
 
     def __init__(self, options):
         self.options = options
@@ -16,11 +24,16 @@ class Command(object):
     def generate_graph(self, data):
         print len(data)
         print data.head()
-        data.plot(kind='bar')
+        data.plot(kind=self.kind)
         fig = plt.gcf()
         fig.subplots_adjust(bottom=0.3)
-        plt.savefig(PLOT_DIR + self.name + '.png')
+        plt.savefig(self.file_name())
         plt.show()
+
+    def file_name(self):
+        return (PLOT_DIR + self.name(self.__class__) + '_' +
+                self.options.answers.replace('data/', '').replace('.csv', '') +
+                '.png')
 
     def execute(self):
         data = self.get_data()
@@ -31,28 +44,35 @@ class Command(object):
 
 
 class MnemonicsEffect(Command):
-    name = 'mnemonics_effect'
+    seen_times = {}
+
+    def increment_seen(self, row):
+        user = row['user']
+        place = row['place_asked']
+        if user not in self.seen_times:
+            self.seen_times[user] = {}
+        if place not in self.seen_times[user]:
+            self.seen_times[user][place] = 0
+        self.seen_times[user][place] += 1
+        return self.seen_times[user][place] - 1
+
+    def add_see_times(self, answers):
+        answers['seen_times'] = 0
+        for index, row in answers.iterrows():
+            answers.loc[index, "seen_times"] = self.increment_seen(row)
+        # print answers[['user', 'seen_times']]
+        return answers
 
     def get_data(self):
-        mnemonics = load_data.get_mnemonics(self.options)
         answers = load_data.get_answers_with_map(self.options)
         answers = answers.sort(['place_asked', 'user'], ascending=True)
         answers = answers.reset_index()
-        answers['seen_times'] = 0
-        for index, row in answers.iterrows():
-            if index != 0:
-                prew = answers.loc[[index - 1]]
-                # print row['user'], prew['user'].values[0], prew['seen_times'].values[0]
-                # print row['user'] == prew['user'].values[0]
-                # print row['place_asked'] == prew['place_asked'].values[0]
-                if row['place_asked'] == prew['place_asked'].values[0] and row['user'] == prew['user'].values[0]:
-                    answers['seen_times'][index] = prew['seen_times']
-                    answers['seen_times'][index] += 1
-        # answers['seen_times'] = answers['seen_times'].shift(1) + 1 if (
-            # answers['user'].shift(1) == answers['user']) else 0
-        print answers[['user', 'seen_times']]
-        mnemonics_added_on = '2014-12-20 06:23:00'
-        answers['after_mnemonics'] = answers['inserted'] > mnemonics_added_on
+        answers = self.add_see_times(answers)
+        answers = answers[answers['seen_times'] == 1]
+
+        MNEMONICS_ADDED_ON = '2014-12-20 06:23:00'
+        mnemonics = load_data.get_mnemonics(self.options)
+        answers['after_mnemonics'] = answers['inserted'] > MNEMONICS_ADDED_ON
         answers['has_mnemonics'] = answers['place_asked'].isin(mnemonics)
         answers = answers.groupby(['place_name', 'after_mnemonics', 'has_mnemonics']).mean()
         answers = answers.reset_index()
@@ -60,6 +80,7 @@ class MnemonicsEffect(Command):
             index='place_name',
             columns='after_mnemonics',
             values='correct')
+
         answers['diff'] = answers[False] - answers[True]
         answers = answers.sort('diff', ascending=False)
         answers = answers.drop('diff', 1)
@@ -72,8 +93,6 @@ class MnemonicsEffect(Command):
 
 
 class FilterLithuania(Command):
-    name = 'filter_lithuania'
-
     def get_data(self):
         answers = load_data.get_answers(self.options)
         answers = answers[answers.place_asked == '142']
@@ -82,8 +101,6 @@ class FilterLithuania(Command):
 
 
 class FilterEuropeStates(Command):
-    name = 'filter_europe_states'
-
     def get_data(self):
         maps = load_data.get_maps(self.options)
         maps = maps[maps.place_type == '1']
@@ -96,16 +113,12 @@ class FilterEuropeStates(Command):
 
 
 class RatingByMap(Command):
-    name = 'rating_by_map'
-
     def get_data(self):
         ratings = load_data.get_rating(self.options)
         return ratings
 
 
 class PlacesByMap(Command):
-    name = 'places_by_map'
-
     def get_data(self):
         maps = load_data.get_maps(self.options)
         maps = maps.groupby(['map_name']).count()
@@ -116,8 +129,6 @@ class PlacesByMap(Command):
 
 
 class PlacesByMapAndType(Command):
-    name = 'places_by_map_and_type'
-
     def get_data(self):
         maps = load_data.get_maps(self.options)
         maps = maps.groupby(['map_name', 'place_type']).count()
@@ -143,9 +154,42 @@ class PlacesByMapAndType(Command):
 
 
 class SuccessByMap(Command):
-    name = 'success_by_map'
-
     def get_data(self):
         answers_with_maps = load_data.get_answers_with_map_grouped(self.options)
         success_rate_by_map = answers_with_maps.mean().sort('correct')
         return success_rate_by_map
+
+
+class Division(Command):
+
+    def file_name(self):
+        return (PLOT_DIR + self.name(self.__class__) +
+                '_' + self.options.divider +
+                '_' + self.options.answers.replace('data/', '').replace('.csv', '') +
+                '.png')
+
+    def get_data(self):
+        possible_dividers = dict([
+            (Command.name(c), c) for c in all_subclasses(divider.Divider)])
+        answers = load_data.get_answers(self.options)
+        if not self.options.divider in possible_dividers:
+            raise Exception('Invalid divider name: ' + self.options.divider)
+        div = possible_dividers[self.options.divider]()
+        counts = {}
+        for t in range(div.min_treshold, div.max_treshold, 1):
+            new_column_name = 'is_school_' + str(t)
+            answers_enriched = div.divide(answers, new_column_name, t)
+            answers_enriched = answers_enriched.groupby(new_column_name).count()
+            answers_enriched = answers_enriched[['id']]
+            answers_enriched = answers_enriched.reset_index()
+            values = answers_enriched.values
+            sum = values[0][1] + (values[1][1] if len(values) > 1 else 0)
+            ratio = (values[0][1] * 1.0) / sum
+            counts[t] = ratio
+        data = pd.Series(counts)
+        return data
+
+
+def convert_from_cammel_case(name):
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()

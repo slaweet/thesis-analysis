@@ -85,11 +85,8 @@ def get_maps(options):
     maps.columns = ['map', 'place', 'place_name', 'map_name', 'place_type']
     return maps
 
-import numpy
-
 
 def read_csv(data_file, options):
-    data_file = os.path.join(options.data_dir, data_file)
     data = pd.read_csv(data_file)  # , dtype={'user': numpy.float64})
     if options.verbose:
         print "File", data_file, "data lenght", len(data)
