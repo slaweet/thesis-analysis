@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 import load_data
 import divider
 import pandas as pd
-import re
-from main import all_subclasses
+import utils
 
 DATA_DIR = 'data/'
 PLOT_DIR = 'plot/'
@@ -13,10 +12,11 @@ PLOT_DIR = 'plot/'
 
 class Command(object):
     kind = 'bar'
+    subplots = False
 
     @staticmethod
     def name(self):
-        return convert_from_cammel_case(self.__name__)
+        return utils.convert_from_cammel_case(self.__name__)
 
     def __init__(self, options):
         self.options = options
@@ -24,7 +24,10 @@ class Command(object):
     def generate_graph(self, data):
         print len(data)
         print data.head()
-        data.plot(kind=self.kind)
+        data.plot(
+            kind=self.kind,
+            subplots=self.subplots,
+        )
         fig = plt.gcf()
         fig.subplots_adjust(bottom=0.3)
         plt.savefig(self.file_name())
@@ -41,6 +44,15 @@ class Command(object):
 
     def get_data(self):
         pass
+
+
+class DivisionCommand(Command):
+
+    def file_name(self):
+        return (PLOT_DIR + self.name(self.__class__) +
+                '_' + self.options.divider +
+                '_' + self.options.answers.replace('data/', '').replace('.csv', '') +
+                '.png')
 
 
 class MnemonicsEffect(Command):
@@ -160,21 +172,33 @@ class SuccessByMap(Command):
         return success_rate_by_map
 
 
-class Division(Command):
-
-    def file_name(self):
-        return (PLOT_DIR + self.name(self.__class__) +
-                '_' + self.options.divider +
-                '_' + self.options.answers.replace('data/', '').replace('.csv', '') +
-                '.png')
+class UsersByMap(DivisionCommand):
+    #  kind = 'pie'
+    #  TODO: why this doesn't work?
+    subplots = True
 
     def get_data(self):
-        possible_dividers = dict([
-            (Command.name(c), c) for c in all_subclasses(divider.Divider)])
+        answers_with_maps = load_data.get_answers_with_map(self.options)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers_with_maps = div.divide(answers_with_maps, new_column_name)
+        answers_with_maps = answers_with_maps.groupby(['map_name', new_column_name])
+        no_of_answers_by_map = answers_with_maps.count()
+        no_of_answers_by_map = no_of_answers_by_map[['place']]
+        no_of_answers_by_map = no_of_answers_by_map.reset_index()
+        no_of_answers_by_map = no_of_answers_by_map.sort('place', ascending=False)
+        no_of_answers_by_map = no_of_answers_by_map.pivot(
+            index='map_name',
+            columns=new_column_name,
+            values='place')
+        #  no_of_answers_by_map.columns = ['Number Of Answers']
+        return no_of_answers_by_map
+
+
+class Division(DivisionCommand):
+    def get_data(self):
         answers = load_data.get_answers(self.options)
-        if not self.options.divider in possible_dividers:
-            raise Exception('Invalid divider name: ' + self.options.divider)
-        div = possible_dividers[self.options.divider]()
+        div = divider.Divider.get_divider(self.options)
         counts = {}
         for t in range(div.min_treshold, div.max_treshold, 1):
             new_column_name = 'is_school_' + str(t)
@@ -188,8 +212,3 @@ class Division(Command):
             counts[t] = ratio
         data = pd.Series(counts)
         return data
-
-
-def convert_from_cammel_case(name):
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()

@@ -3,7 +3,7 @@
 
 import optparse
 import commands
-import re
+import utils
 
 DATA_DIR = 'data/'
 
@@ -33,7 +33,7 @@ def main():
     options, arguments = p.parse_args()
 
     possible_commands = dict([
-        (commands.Command.name(c), c) for c in all_subclasses(commands.Command)])
+        (commands.Command.name(c), c) for c in utils.all_subclasses(commands.Command)])
     if len(arguments) == 0:
         print_error('No command specified')
         print_help(possible_commands)
@@ -52,11 +52,6 @@ def print_help(possible_commands):
     print '  ' + '\n  '.join(possible_commands.keys())
 
 
-def all_subclasses(cls):
-    return cls.__subclasses__() + [g for s in cls.__subclasses__()
-                                   for g in all_subclasses(s)]
-
-
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -73,10 +68,6 @@ def print_ok(msg):
 def print_error(msg):
     print bcolors.FAIL + msg + bcolors.ENDC
 
-
-def convert_from_cammel_case(name):
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
 if __name__ == '__main__':
     main()

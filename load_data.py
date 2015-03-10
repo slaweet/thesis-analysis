@@ -2,6 +2,7 @@
 
 import pandas as pd
 import os
+from main import DATA_DIR
 
 
 def get_mnemonics(options):
@@ -9,7 +10,7 @@ def get_mnemonics(options):
     data_file = os.path.join(options.data_dir, data_file)
     mnemonics = pd.read_csv(data_file, dtype=unicode, sep='\t', header=None)
     mnemonics = mnemonics[mnemonics[1].notnull()]
-    places = read_csv('geography.place.csv', options)
+    places = read_csv(DATA_DIR + 'geography.place.csv', options)
     data = pd.merge(
         places,
         mnemonics,
@@ -57,10 +58,10 @@ def get_answers_with_map(options):
 
 
 def get_maps(options):
-    places = read_csv('geography.place.csv', options)
-    placerelations = read_csv('geography.placerelation.csv', options)
+    places = read_csv(DATA_DIR + 'geography.place.csv', options)
+    placerelations = read_csv(DATA_DIR + 'geography.placerelation.csv', options)
     placerelations_related = read_csv(
-        'geography.placerelation_related_places.csv', options)
+        DATA_DIR + 'geography.placerelation_related_places.csv', options)
     maps = pd.merge(
         placerelations,
         placerelations_related,
