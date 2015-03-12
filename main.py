@@ -40,7 +40,11 @@ def main():
         return
 
     command = arguments[0]
-    if command in possible_commands:
+    if command == 'all':
+        for i, cmd in possible_commands.iteritems():
+            print 'processing', i
+            cmd(options, show_plots=False).execute()
+    elif command in possible_commands:
         possible_commands[command](options).execute()
     else:
         print_error('Unknown command: ' + command)

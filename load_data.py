@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
+import numpy as np
 import os
 from main import DATA_DIR
 
@@ -34,7 +35,20 @@ def get_rating(options):
 
 
 def get_answers(options):
-    answers = read_csv(options.answers, options)
+    col_types = {
+        'user': np.uint32,
+        'id': np.uint32,
+        'place_asked': np.uint16,
+        'place_answered': np.float16,  # because of NAs
+        'type': np.uint8,
+        'response_time': np.uint32,
+        'number_of_options': np.uint8,
+        'place_map': np.float16,       # because of NAs
+        'ip_address': str,
+        'language': str,
+        'test_id': np.float16          # because of NAs
+    }
+    answers = read_csv(options.answers, options, col_types)
     answers['correct'] = answers['place_asked'] == answers['place_answered']
     return answers
 
@@ -87,8 +101,8 @@ def get_maps(options):
     return maps
 
 
-def read_csv(data_file, options):
-    data = pd.read_csv(data_file)  # , dtype={'user': numpy.float64})
+def read_csv(data_file, options, dtype=None):
+    data = pd.read_csv(data_file, dtype=dtype)  # , dtype={'user': numpy.float64})
     if options.verbose:
         print "File", data_file, "data lenght", len(data)
         print data.head()

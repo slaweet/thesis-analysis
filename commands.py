@@ -18,8 +18,9 @@ class Command(object):
     def name(self):
         return utils.convert_from_cammel_case(self.__name__)
 
-    def __init__(self, options):
+    def __init__(self, options, show_plots=True):
         self.options = options
+        self.show_plots = show_plots
 
     def generate_graph(self, data):
         print len(data)
@@ -27,18 +28,36 @@ class Command(object):
         data.plot(
             kind=self.kind,
             subplots=self.subplots,
+            title=self.plot_name(),
         )
         fig = plt.gcf()
         fig.subplots_adjust(bottom=0.3)
         plt.savefig(self.file_name())
-        plt.show()
+        if self.show_plots:
+            plt.show()
+        plt.clf()
 
     def file_name(self):
-        return (PLOT_DIR + self.name(self.__class__) + '_' +
-                self.options.answers.replace('data/', '').replace('.csv', '') +
-                '.png')
+        return (PLOT_DIR + utils.convert_from_cammel_case(
+            self.plot_name()
+        ).replace(' ', '_') + '.png')
+
+    def plot_name(self):
+        return (self.__class__.__name__ + ' ' +
+                self.options.answers.replace('data/', '').replace('.csv', ''))
 
     def execute(self):
+        if self.options.divider == 'all':
+            self.show_plots = False
+            divs = divider.Divider.get_divider(self.options)
+            for key, div in divs.iteritems():
+                print 'processing divider', key
+                self.options.divider = key
+                self._execute()
+        else:
+            self._execute()
+
+    def _execute(self):
         data = self.get_data()
         self.generate_graph(data)
 
@@ -48,11 +67,10 @@ class Command(object):
 
 class DivisionCommand(Command):
 
-    def file_name(self):
-        return (PLOT_DIR + self.name(self.__class__) +
-                '_' + self.options.divider +
-                '_' + self.options.answers.replace('data/', '').replace('.csv', '') +
-                '.png')
+    def plot_name(self):
+        return (self.__class__.__name__ + ' ' +
+                self.options.divider + ' ' +
+                self.options.answers.replace('data/', '').replace('.csv', ''))
 
 
 class MnemonicsEffect(Command):
@@ -107,9 +125,10 @@ class MnemonicsEffect(Command):
 class FilterLithuania(Command):
     def get_data(self):
         answers = load_data.get_answers(self.options)
-        answers = answers[answers.place_asked == '142']
+        answers = answers[answers.place_asked == 142]
         print answers
         answers.to_csv('data/answers-lithuania.csv', sep=',', encoding='utf-8')
+        return answers
 
 
 class FilterEuropeStates(Command):
@@ -122,6 +141,7 @@ class FilterEuropeStates(Command):
         answers = answers[answers.place_asked.isin(maps.place)]
         print len(answers)
         answers.to_csv('data/answers-europe.csv', sep=',', encoding='utf-8')
+        return answers
 
 
 class RatingByMap(Command):
@@ -172,29 +192,6 @@ class SuccessByMap(Command):
         return success_rate_by_map
 
 
-class UsersByMap(DivisionCommand):
-    #  kind = 'pie'
-    #  TODO: why this doesn't work?
-    subplots = True
-
-    def get_data(self):
-        answers_with_maps = load_data.get_answers_with_map(self.options)
-        div = divider.Divider.get_divider(self.options)
-        new_column_name = div.column_name
-        answers_with_maps = div.divide(answers_with_maps, new_column_name)
-        answers_with_maps = answers_with_maps.groupby(['map_name', new_column_name])
-        no_of_answers_by_map = answers_with_maps.count()
-        no_of_answers_by_map = no_of_answers_by_map[['place']]
-        no_of_answers_by_map = no_of_answers_by_map.reset_index()
-        no_of_answers_by_map = no_of_answers_by_map.sort('place', ascending=False)
-        no_of_answers_by_map = no_of_answers_by_map.pivot(
-            index='map_name',
-            columns=new_column_name,
-            values='place')
-        #  no_of_answers_by_map.columns = ['Number Of Answers']
-        return no_of_answers_by_map
-
-
 class Division(DivisionCommand):
     def get_data(self):
         answers = load_data.get_answers(self.options)
@@ -212,3 +209,31 @@ class Division(DivisionCommand):
             counts[t] = ratio
         data = pd.Series(counts)
         return data
+
+
+class AnswersByMap(DivisionCommand):
+    #  TODO: why piechart doesn't work?
+    #  kind = 'pie'
+    # subplots = True
+
+    def get_data(self):
+        answers_with_maps = load_data.get_answers_with_map(self.options)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers_with_maps = div.divide(answers_with_maps, new_column_name)
+        answers_with_maps = answers_with_maps.groupby(['map_name', new_column_name])
+        answers_by_map = answers_with_maps.count()
+        answers_by_map = answers_by_map[['place']]
+        answers_by_map = answers_by_map.reset_index()
+        answers_by_map = answers_by_map.pivot(
+            index='map_name',
+            columns=new_column_name,
+            values='place')
+        answers_by_map[False] = answers_by_map[False] / answers_by_map[False].sum()
+        answers_by_map[True] = answers_by_map[True] / answers_by_map[True].sum()
+        answers_by_map['Diff'] = answers_by_map[True] - answers_by_map[False]
+        answers_by_map = answers_by_map.sort(False, ascending=False)
+        answers_by_map = answers_by_map[:10]
+        answers_by_map = answers_by_map.sort('Diff', ascending=False)
+        #  answers_by_map.columns = ['Number Of Answers']
+        return answers_by_map

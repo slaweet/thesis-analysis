@@ -11,7 +11,9 @@ class Divider(object):
         possible_dividers = dict([
             (utils.convert_from_cammel_case(c.__name__), c)
             for c in utils.all_subclasses(Divider)])
-        if not options.divider in possible_dividers:
+        if options.divider == 'all':
+            return possible_dividers
+        if options.divider not in possible_dividers:
             raise Exception('Invalid divider name: ' + options.divider)
         div = possible_dividers[options.divider]()
         return div
@@ -47,7 +49,7 @@ class NewVsReturning(Divider):
 
     def divide(self, answers, new_column_name, treshold=10):
         returning = []
-        answers = answers.sort(['inserted'], ascending=True)
+        # answers.sort(['inserted'], ascending=True, inplace=True)
         users = answers[['user', 'inserted']].groupby('user')
         for name, group in users:
             # print group.values[0][1][:treshold], group.values[-1][1][:treshold]
