@@ -13,6 +13,10 @@ PLOT_DIR = 'plot/'
 class Command(object):
     kind = 'bar'
     subplots = False
+    adjust_bottom = 0.1
+    legend_alpha = False
+    ylim = None
+    legend_loc = None
 
     @staticmethod
     def name(self):
@@ -31,7 +35,19 @@ class Command(object):
             title=self.plot_name(),
         )
         fig = plt.gcf()
-        fig.subplots_adjust(bottom=0.3)
+        if self.ylim is not None:
+            axes = plt.gca()
+            axes.set_ylim(self.ylim)
+
+        fig.subplots_adjust(bottom=self.adjust_bottom)
+        ax = fig.add_subplot(111)
+        if self.legend_loc is not None:
+            legend = ax.legend(loc=self.legend_loc)
+        else:
+            legend = ax.legend()
+        if self.legend_alpha:
+            legend.get_frame().set_alpha(0.8)
+
         plt.savefig(self.file_name())
         if self.show_plots:
             plt.show()
@@ -151,6 +167,8 @@ class RatingByMap(Command):
 
 
 class PlacesByMap(Command):
+    adjust_bottom = 0.3
+
     def get_data(self):
         maps = load_data.get_maps(self.options)
         maps = maps.groupby(['map_name']).count()
@@ -161,6 +179,8 @@ class PlacesByMap(Command):
 
 
 class PlacesByMapAndType(Command):
+    adjust_bottom = 0.3
+
     def get_data(self):
         maps = load_data.get_maps(self.options)
         maps = maps.groupby(['map_name', 'place_type']).count()
@@ -212,9 +232,9 @@ class Division(DivisionCommand):
 
 
 class AnswersByMap(DivisionCommand):
-    #  TODO: why piechart doesn't work?
     #  kind = 'pie'
     # subplots = True
+    adjust_bottom = 0.3
 
     def get_data(self):
         answers_with_maps = load_data.get_answers_with_map(self.options)
@@ -237,3 +257,107 @@ class AnswersByMap(DivisionCommand):
         answers_by_map = answers_by_map.sort('Diff', ascending=False)
         #  answers_by_map.columns = ['Number Of Answers']
         return answers_by_map
+
+
+class InTimeCommand(Command):
+    kind = 'area'
+    legend_alpha = True
+    ylim = [0, 1]
+
+    def _get_data(self, groupby_column, result_columns=None,
+                  drop_duplicate=None, answers=None,
+                  date_precision=9, columns_rename=None):
+        if answers is None:
+            answers = load_data.get_answers_with_map(self.options)
+        answers['date'] = answers['inserted'].map(lambda x: x[:date_precision])
+        if drop_duplicate is not None:
+            answers = answers.drop_duplicates(
+                [drop_duplicate, 'date', groupby_column])
+        grouped = answers.groupby(['date', groupby_column]).count()
+        grouped = grouped[['id']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='date',
+            columns=groupby_column,
+            values='id')
+        if result_columns is None:
+            result_columns = grouped.columns
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[grouped['All'] > 10]
+        grouped = grouped[result_columns]
+        if columns_rename is not None:
+            grouped.rename(columns=columns_rename, inplace=True)
+        return grouped
+
+
+class AnswersByMapInTime(InTimeCommand):
+    def get_data(self):
+        maps = ['World', 'Europe', 'Africa', 'Asia', 'North America',
+                'South America', 'Czech Rep.', 'United States']
+        data = self._get_data('map_name', maps)
+        return data
+
+
+class UsersByMapInTime(InTimeCommand):
+    def get_data(self):
+        maps = ['World', 'Europe', 'Africa', 'Asia', 'North America',
+                'South America', 'Czech Rep.', 'United States']
+        data = self._get_data('map_name', maps, drop_duplicate='user')
+        return data
+
+
+class AnswersByLangInTime(InTimeCommand):
+    legend_loc = 'lower left'
+
+    def get_data(self):
+        language_ids = {
+            '0': 'Czech',
+            '1': 'English',
+            '2': 'Spanish',
+        }
+        data = self._get_data(
+            'language', date_precision=10, columns_rename=language_ids)
+        return data
+
+
+class DividerSimilarity(Command):
+    adjust_bottom = 0.4
+
+    def get_data(self):
+        answers = load_data.get_answers(self.options)
+        self.options.divider = 'all'
+        divs = divider.Divider.get_divider(self.options)
+        for key, div in divs.iteritems():
+            answers = div().divide(answers, key)
+        grouped = answers.groupby(divs.keys()).count()
+        grouped = grouped[['id']]
+        self.options.divider = 'hack'
+        return grouped
+
+
+class DivisionInTime(DivisionCommand):
+    kind = 'area'
+
+    def get_data(self):
+        answers = load_data.get_answers(self.options)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        answers['date'] = answers['inserted'].map(lambda x: x[:10])
+        grouped = answers.groupby(['date', new_column_name]).count()
+        grouped = grouped[['id']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='date',
+            columns=new_column_name,
+            values='id')
+        grouped['True'] = grouped[True] / (grouped[True] + grouped[False])
+        grouped = grouped[['True']].fillna(0)
+        grouped['False'] = 1 - grouped['True']
+        return grouped
