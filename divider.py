@@ -62,9 +62,9 @@ class NewVsReturning(Divider):
 
 class MorningVsEvening(Divider):
     max_treshold = 25
-    column_name = 'Is Evening User (Average time more than 13:00)'
+    column_name = 'Average time > 16:00'
 
-    def divide(self, answers, new_column_name, treshold=13):
+    def divide(self, answers, new_column_name, treshold=16):
         answers = answers[~answers['inserted'].isin([None, ''])]
         answers['time'] = answers['inserted'].map(to_seconds)
         users = answers.sort(['id'], ascending=True).groupby('user').mean()
@@ -78,6 +78,7 @@ class MorningVsEvening(Divider):
             in times_by_user
             if seconds > treshold * 3600]
         answers[new_column_name] = answers['user'].isin(after_users)
+        answers = answers.drop('time', 1)
         return answers
 
 
