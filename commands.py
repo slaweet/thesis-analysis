@@ -5,9 +5,42 @@ import load_data
 import divider
 import pandas as pd
 import utils
+import datetime
+import math
 
 DATA_DIR = 'data/'
 PLOT_DIR = 'plot/'
+PARTIAL_DATA_PLOT_DIR = PLOT_DIR + 'partial_data/'
+
+PLACE_TYPES = {
+    0: 'unknown',
+    1: 'state',
+    2: 'city',
+    3: 'world',
+    4: 'continent',
+    5: 'river',
+    6: 'lake',
+    7: 'region_cz',
+    8: 'bundesland',
+    9: 'province',
+    10: 'region_it',
+    11: 'region',
+    12: 'autonumous_comunity',
+    13: 'mountains',
+    14: 'island'
+}
+
+LANGUAGES = {
+    '0': 'Czech',
+    '1': 'English',
+    '2': 'Spanish',
+}
+
+RATING_VALUES = {
+    1: 'Too easy',
+    2: 'Appropriate',
+    3: 'Too difficult',
+}
 
 
 class Command(object):
@@ -17,6 +50,10 @@ class Command(object):
     legend_alpha = False
     ylim = None
     legend_loc = None
+    active = True
+    rot = None
+    stacked = None
+    week_cache = {}
 
     @staticmethod
     def name(self):
@@ -33,6 +70,8 @@ class Command(object):
             kind=self.kind,
             subplots=self.subplots,
             title=self.plot_name(),
+            rot=self.rot,
+            stacked=self.stacked,
         )
         fig = plt.gcf()
         if self.ylim is not None:
@@ -54,7 +93,11 @@ class Command(object):
         plt.clf()
 
     def file_name(self):
-        return (PLOT_DIR + utils.convert_from_cammel_case(
+        if self.options.answers == DATA_DIR + 'geography.answer.csv':
+            dest_dir = PLOT_DIR
+        else:
+            dest_dir = PARTIAL_DATA_PLOT_DIR
+        return (dest_dir + utils.convert_from_cammel_case(
             self.plot_name()
         ).replace(' ', '_') + '.png')
 
@@ -77,6 +120,45 @@ class Command(object):
         data = self.get_data()
         self.generate_graph(data)
 
+    def get_week(self, datetime_string):
+        date = datetime_string[:10]
+        if date in self.week_cache:
+            return self.week_cache[date]
+        week = datetime.datetime.strptime(
+            date, "%Y-%m-%d"
+        ).date().isocalendar()[1]
+        if week == 1 and datetime_string[5:7] == '12':
+            week = 53
+        self.week_cache[date] = week
+        return week
+
+    def get_weekday(self, datetime_string):
+        date = datetime_string[:10]
+        if date in self.week_cache:
+            return self.week_cache[date]
+        weekday = datetime.datetime.strptime(
+            date, "%Y-%m-%d"
+        ).date().weekday()
+        self.week_cache[date] = weekday
+        return weekday
+
+    def add_week(self, answers, field_name):
+        answers[field_name] = answers['inserted'].map(
+            lambda x:
+            x[:5] + 'w' +
+            str(self.get_week(x)).zfill(2))
+        return answers
+
+    def add_weekday(self, answers, field_name):
+        answers[field_name] = answers['inserted'].map(
+            lambda x: str(self.get_weekday(x)))
+        return answers
+
+    def add_weekday_and_time(self, answers, field_name):
+        answers[field_name] = answers['inserted'].map(
+            lambda x: str(self.get_weekday(x)) + '-' + x[11:13])
+        return answers
+
     def get_data(self):
         pass
 
@@ -90,6 +172,7 @@ class DivisionCommand(Command):
 
 
 class MnemonicsEffect(Command):
+    active = False
     seen_times = {}
 
     def increment_seen(self, row):
@@ -139,6 +222,8 @@ class MnemonicsEffect(Command):
 
 
 class FilterLithuania(Command):
+    active = False
+
     def get_data(self):
         answers = load_data.get_answers(self.options)
         answers = answers[answers.place_asked == 142]
@@ -148,6 +233,8 @@ class FilterLithuania(Command):
 
 
 class FilterEuropeStates(Command):
+    active = False
+
     def get_data(self):
         maps = load_data.get_maps(self.options)
         maps = maps[maps.place_type == '1']
@@ -158,12 +245,6 @@ class FilterEuropeStates(Command):
         print len(answers)
         answers.to_csv('data/answers-europe.csv', sep=',', encoding='utf-8')
         return answers
-
-
-class RatingByMap(Command):
-    def get_data(self):
-        ratings = load_data.get_rating(self.options)
-        return ratings
 
 
 class PlacesByMap(Command):
@@ -261,69 +342,157 @@ class AnswersByMap(DivisionCommand):
 
 class InTimeCommand(Command):
     kind = 'area'
+    stacked = True
     legend_alpha = True
     ylim = [0, 1]
+    groupby_column = None
+    result_columns = None
+    drop_duplicate = None
+    date_precision = 10
+    columns_rename = None
+    rot = 90
+    adjust_bottom = 0.25
+    answers = None
+    absolute_values = False
+    date_offset = 0
 
-    def _get_data(self, groupby_column, result_columns=None,
-                  drop_duplicate=None, answers=None,
-                  date_precision=9, columns_rename=None):
-        if answers is None:
+    def setup(self):
+        if self.absolute_values:
+            self.kind = 'line'
+            self.stacked = False
+            self.ylim = None
+
+    def get_answers(self):
+        if self.answers is not None:
+            answers = self.answers
+        else:
             answers = load_data.get_answers_with_map(self.options)
-        answers['date'] = answers['inserted'].map(lambda x: x[:date_precision])
-        if drop_duplicate is not None:
+        if self.date_precision == 'week':
+            answers = self.add_week(answers, 'date')
+        elif self.date_precision == 'weekday':
+            answers = self.add_weekday(answers, 'date')
+        elif self.date_precision == 'weekday_and_time':
+            answers = self.add_weekday_and_time(answers, 'date')
+        else:
+            answers['date'] = answers['inserted'].map(
+                lambda x: x[self.date_offset:
+                            self.date_offset + self.date_precision])
+        if self.drop_duplicate is not None:
             answers = answers.drop_duplicates(
-                [drop_duplicate, 'date', groupby_column])
-        grouped = answers.groupby(['date', groupby_column]).count()
+                [self.drop_duplicate, 'date', self.groupby_column])
+        return answers
+
+    def get_data(self):
+        self.setup()
+        answers = self.get_answers()
+        grouped = answers.groupby(['date', self.groupby_column]).count()
         grouped = grouped[['id']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='date',
-            columns=groupby_column,
+            columns=self.groupby_column,
             values='id')
-        if result_columns is None:
-            result_columns = grouped.columns
+        if self.result_columns is None:
+            self.result_columns = grouped.columns
         value_columns = grouped.columns
         grouped = grouped.fillna(0)
-        grouped['All'] = 0
-        for c in value_columns:
-            grouped['All'] += grouped[c]
-        for c in value_columns:
-            grouped[c] = grouped[c] / grouped['All']
-        grouped = grouped[grouped['All'] > 10]
-        grouped = grouped[result_columns]
-        if columns_rename is not None:
-            grouped.rename(columns=columns_rename, inplace=True)
+        if not self.absolute_values:
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[grouped['All'] > 10]
+        grouped = grouped[self.result_columns]
+        if self.columns_rename is not None:
+            grouped.rename(columns=self.columns_rename, inplace=True)
         return grouped
 
 
 class AnswersByMapInTime(InTimeCommand):
-    def get_data(self):
-        maps = ['World', 'Europe', 'Africa', 'Asia', 'North America',
-                'South America', 'Czech Rep.', 'United States']
-        data = self._get_data('map_name', maps)
-        return data
+    result_columns = [
+        'World', 'Europe', 'Africa', 'Asia', 'North America',
+        'South America', 'Czech Rep.', 'United States']
+    groupby_column = 'map_name'
+    date_precision = 'week'
 
 
-class UsersByMapInTime(InTimeCommand):
-    def get_data(self):
-        maps = ['World', 'Europe', 'Africa', 'Asia', 'North America',
-                'South America', 'Czech Rep.', 'United States']
-        data = self._get_data('map_name', maps, drop_duplicate='user')
-        return data
+class AnswersByMapInDay(AnswersByMapInTime):
+    date_precision = 2
+    date_offset = 11
+
+
+class AnswersByMapInDayAbsolute(AnswersByMapInDay):
+    absolute_values = True
+
+
+class UsersByMapInTime(AnswersByMapInTime):
+    drop_duplicate = 'user'
 
 
 class AnswersByLangInTime(InTimeCommand):
     legend_loc = 'lower left'
+    groupby_column = 'language'
+    columns_rename = LANGUAGES
 
-    def get_data(self):
-        language_ids = {
-            '0': 'Czech',
-            '1': 'English',
-            '2': 'Spanish',
-        }
-        data = self._get_data(
-            'language', date_precision=10, columns_rename=language_ids)
-        return data
+
+class AnswersByLangInDay(AnswersByLangInTime):
+    date_precision = 2
+    date_offset = 11
+
+
+class AnswersInDayAbsolute(AnswersByLangInTime):
+    result_columns = ['0']
+    columns_rename = {'0': 'Number of answers'}
+    legend_loc = 'lower right'
+    date_precision = 2
+    date_offset = 11
+    absolute_values = True
+    adjust_bottom = 0.1
+
+
+class AnswersInDayByMinuteAbsolute(AnswersInDayAbsolute):
+    date_precision = 5
+
+
+class AnswersByWeekdayAbsolute(AnswersInDayAbsolute):
+    date_precision = 'weekday'
+    date_offset = 0
+
+
+class AnswersByWeekdayAndTimeAbsolute(AnswersInDayAbsolute):
+    date_precision = 'weekday_and_time'
+    date_offset = 0
+
+
+class UsersInDayAbsolute(AnswersInDayAbsolute):
+    columns_rename = {'0': 'Number of users'}
+    drop_duplicate = 'user'
+
+
+class UsersInDayByMinuteAbsolute(AnswersInDayAbsolute):
+    columns_rename = {'0': 'Number of users'}
+    drop_duplicate = 'user'
+    date_precision = 5
+
+
+class AnswersByPlaceTypeInTime(InTimeCommand):
+    legend_loc = 'lower left'
+    groupby_column = 'place_type'
+    columns_rename = PLACE_TYPES
+    result_columns = [1, 2, 5, 7, 13, 14]
+    date_precision = 'week'
+
+
+class AnswersByNumberOfOptionsInTime(InTimeCommand):
+    legend_loc = 'lower right'
+    groupby_column = 'number_of_options'
+
+
+class CorrectRateInTime(InTimeCommand):
+    legend_loc = 'upper right'
+    groupby_column = 'correct'
+    date_precision = 9
 
 
 class DividerSimilarity(Command):
@@ -337,27 +506,168 @@ class DividerSimilarity(Command):
             answers = div().divide(answers, key)
         grouped = answers.groupby(divs.keys()).count()
         grouped = grouped[['id']]
-        self.options.divider = 'hack'
+        # self.options.divider = 'hack'
         return grouped
 
 
-class DivisionInTime(DivisionCommand):
-    kind = 'area'
+class DividerCorrelation(Command):
+    adjust_bottom = 0.3
 
     def get_data(self):
+        answers = load_data.get_answers(self.options)
+        self.options.divider = 'all'
+        divs = divider.Divider.get_divider(self.options)
+        for key, div in divs.iteritems():
+            answers = div().divide(answers, key)
+        keys = divs.keys()
+        values = answers[keys]
+        corr = values.corr()
+        return corr
+
+
+class DivisionInTime(InTimeCommand):
+
+    def plot_name(self):
+        return (self.__class__.__name__ + ' ' +
+                self.options.divider + ' ' +
+                self.options.answers.replace('data/', '').replace('.csv', ''))
+
+    @property
+    def answers(self):
         answers = load_data.get_answers(self.options)
         div = divider.Divider.get_divider(self.options)
         new_column_name = div.column_name
         answers = div.divide(answers, new_column_name)
-        answers['date'] = answers['inserted'].map(lambda x: x[:10])
-        grouped = answers.groupby(['date', new_column_name]).count()
-        grouped = grouped[['id']]
+        self.groupby_column = new_column_name
+        return answers
+
+
+class AnswersByDividerInDay(DivisionInTime):
+    date_precision = 2
+    date_offset = 11
+
+
+class AnswersByDividerInDayByMinute(DivisionInTime):
+    date_precision = 5
+    date_offset = 11
+
+
+class AnswersByDividerInWeekByHour(DivisionInTime):
+    date_precision = 'weekday_and_time'
+
+
+class AnswersByUserHistogram(Command):
+    kind = 'hist'
+
+    def get_data(self):
+        answers = load_data.get_answers(self.options)
+        grouped = answers.groupby(['user']).count()
+        grouped = grouped.reset_index()
+        grouped['log_10(count)'] = grouped['id'].map(lambda x: math.log(x, 10))
+        grouped = grouped[['log_10(count)']]
+        return grouped
+
+
+class RatingByMap(Command):
+    def get_data(self):
+        ratings = load_data.get_rating_with_maps(self.options)
+        return ratings
+
+
+class RatingOrderByValue(Command):
+    stacked = True
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        grouped = ratings.groupby(['value', 'order']).count()
+        grouped = grouped[['user']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
-            index='date',
-            columns=new_column_name,
-            values='id')
-        grouped['True'] = grouped[True] / (grouped[True] + grouped[False])
-        grouped = grouped[['True']].fillna(0)
-        grouped['False'] = 1 - grouped['True']
+            index='value',
+            columns='order',
+            values='user')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
         return grouped
+
+
+class RatingByOrder(Command):
+    stacked = True
+    legend_loc = 'center right'
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        grouped = ratings.groupby(['value', 'order']).count()
+        grouped = grouped[['user']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='order',
+            columns='value',
+            values='user')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(columns=RATING_VALUES, inplace=True)
+        return grouped
+
+
+class RatingByLastOrder(Command):
+    stacked = True
+    legend_loc = 'center right'
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        grouped = ratings.groupby(['value', 'last_order']).count()
+        grouped = grouped[['user']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='last_order',
+            columns='value',
+            values='user')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(columns=RATING_VALUES, inplace=True)
+        return grouped
+
+
+class RatingValueHistogram(Command):
+    kind = 'hist'
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings[['value']]
+        return ratings
+
+
+class RatingOrderHistogram(Command):
+    kind = 'hist'
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings[['order']]
+        return ratings
+
+
+class RatingInTime(InTimeCommand):
+    groupby_column = 'value'
+
+    @property
+    def answers(self):
+        return load_data.get_rating(self.options)

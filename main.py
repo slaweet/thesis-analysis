@@ -15,6 +15,10 @@ def main():
                  dest="answers", default=DATA_DIR + 'geography.answer.csv',
                  help="path to file with answers inside data dir")
 
+    p.add_option("-b", "--ab_values", action="store",
+                 dest="ab_values", default=DATA_DIR + 'geography.answer_ab_values.csv',
+                 help="path to file with values of a/b experiments")
+
     p.add_option("-d", "--data-dir", action="store",
                  dest="data_dir", default=DATA_DIR,
                  help="path to directory with data")
@@ -41,9 +45,20 @@ def main():
 
     command = arguments[0]
     if command == 'all':
-        for i, cmd in possible_commands.iteritems():
+        errors = []
+        for i, Cmd in possible_commands.iteritems():
             print 'processing', i
-            cmd(options, show_plots=False).execute()
+            try:
+                cmd = Cmd(options, show_plots=False)
+                if cmd.active:
+                    cmd.execute()
+                else:
+                    print_error('Command inactive: ' + i)
+            except Exception, e:
+                errors.append(i + ': ' + str(e))
+                print_error('Failed command: ' + i + ': ' + str(e))
+        if len(errors) != 0:
+            print_error('Failed commands: \n' + '\n\n'.join(errors))
     elif command in possible_commands:
         possible_commands[command](options).execute()
     else:

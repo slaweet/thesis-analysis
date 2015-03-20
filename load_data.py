@@ -24,6 +24,23 @@ def get_mnemonics(options):
 
 def get_rating(options):
     ratings = read_csv(options.ratings, options)
+    ratings = ratings.sort(['user', 'inserted'], ascending=True)
+    rating_orders = []
+    order_by_user = {}
+    grouped = ratings.groupby('user')
+    for i, g in grouped:
+        order_by_user[i] = 0
+        for j, row in g['value'].iteritems():
+            order_by_user[i] += 1
+            rating_orders.append(order_by_user[i])
+    ratings['order'] = pd.Series(rating_orders, index=ratings.index)
+    ratings['last_order'] = ratings['user'].map(lambda x: order_by_user[x])
+    ratings = ratings[ratings['last_order'] <= 4]
+    return ratings
+
+
+def get_rating_with_maps(options):
+    ratings = get_rating(options)
     answers_with_maps = get_answers_with_map(options)
     ratings_with_maps = pd.merge(
         ratings,
@@ -51,6 +68,25 @@ def get_answers(options):
     answers = read_csv(options.answers, options, col_types)
     answers['correct'] = answers['place_asked'] == answers['place_answered']
     return answers
+
+
+def get_ab_values(options):
+    col_types = np.int64
+    ab_values = read_csv(options.ab_values, options, col_types)
+    return ab_values
+
+
+def get_answers_with_ab(options, answers=None):
+    if answers is None:
+        answers = get_answers(options)
+    ab_values = get_ab_values(options)
+    answers_with_ab = pd.merge(
+        answers,
+        ab_values,
+        left_on=['id'],
+        right_on=['answer'],
+    )
+    return answers_with_ab
 
 
 def get_answers_with_map_grouped(options):
