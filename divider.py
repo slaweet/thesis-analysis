@@ -1,12 +1,11 @@
 import utils
-"""
 import load_data
-"""
 
 
 class Divider(object):
     min_treshold = 1
     max_treshold = 20
+    step = 1
     column_name = 'Not set'
 
     def __init__(self, options=None):
@@ -38,8 +37,10 @@ class Divider(object):
 
 class SchoolDivider(Divider):
     column_name = 'Is School User'
+    max_treshold = 40
+    step = 2
 
-    def get_positive_users(self, answers, treshold=5):
+    def get_positive_users(self, answers, treshold=25):
         classroom_size = treshold
         answers = answers[~answers['ip_address'].isin([None, ''])]
         classroom_users = [
@@ -137,6 +138,35 @@ class RecommendsByRandom(Divider):
         answers_with_ab = answers_with_ab.drop_duplicates('user')
         return answers_with_ab['user']
 """
+
+
+class HasHighPriorSkill(Divider):
+    min_treshold = -5
+    max_treshold = 6
+    column_name = 'Has High prior skill'
+
+    def get_positive_users(self, answers, treshold=0):
+        skills = load_data.get_prior_skills(self.options)
+        skills = skills[skills['value'] > treshold]
+        return skills['user']
+
+
+class IsFast(Divider):
+    max_treshold = 10
+    column_name = 'Responds quickly'
+
+    def get_positive_users(self, answers, treshold=3.5):
+        users = answers.groupby(['user']).median()
+        users = users.reset_index().drop_duplicates('user')
+        users = users.set_index(['user'])
+        times_by_user = users['response_time']
+        times_by_user = times_by_user.to_dict().items()
+        fast_users = [
+            user
+            for (user, seconds)
+            in times_by_user
+            if seconds < treshold * 1000]
+        return fast_users
 
 
 def to_seconds(datetime_string):

@@ -50,6 +50,7 @@ class Command(object):
     legend_alpha = False
     ylim = None
     legend_loc = None
+    legend_bbox = None
     active = True
     rot = None
     stacked = None
@@ -82,6 +83,8 @@ class Command(object):
         ax = fig.add_subplot(111)
         if self.legend_loc is not None:
             legend = ax.legend(loc=self.legend_loc)
+        elif self.legend_bbox is not None:
+            legend = ax.legend(bbox_to_anchor=self.legend_bbox)
         else:
             legend = ax.legend()
         if self.legend_alpha:
@@ -294,11 +297,14 @@ class SuccessByMap(Command):
 
 
 class Division(DivisionCommand):
+    legend_loc = 'best'
+    ylim = [0, 1]
+
     def get_data(self):
         answers = load_data.get_answers(self.options)
         div = divider.Divider.get_divider(self.options)
         counts = {}
-        for t in range(div.min_treshold, div.max_treshold, 1):
+        for t in range(div.min_treshold, div.max_treshold, div.step):
             new_column_name = 'is_school_' + str(t)
             answers_enriched = div.divide(answers, new_column_name, t)
             answers_enriched = answers_enriched.groupby(new_column_name).count()
@@ -358,7 +364,9 @@ class InTimeCommand(Command):
 
     def setup(self):
         if self.absolute_values:
-            self.kind = 'line'
+            self.legend_loc = 'best'
+            if self.kind == 'area':
+                self.kind = 'line'
             self.stacked = False
             self.ylim = None
 
@@ -395,6 +403,7 @@ class InTimeCommand(Command):
         if self.result_columns is None:
             self.result_columns = grouped.columns
         value_columns = grouped.columns
+        print grouped
         grouped = grouped.fillna(0)
         if not self.absolute_values:
             grouped['All'] = 0
@@ -474,6 +483,20 @@ class UsersInDayByMinuteAbsolute(AnswersInDayAbsolute):
     columns_rename = {'0': 'Number of users'}
     drop_duplicate = 'user'
     date_precision = 5
+
+
+class AnswersInTimeAbsolute(AnswersByLangInTime):
+    result_columns = ['0']
+    columns_rename = {'0': 'Number of answers'}
+    legend_loc = 'lower right'
+    date_precision = 7
+    absolute_values = True
+    adjust_bottom = 0.1
+
+
+class UsersInTimeAbsolute(AnswersInTimeAbsolute):
+    columns_rename = {'0': 'Number of users'}
+    drop_duplicate = 'user'
 
 
 class AnswersByPlaceTypeInTime(InTimeCommand):
@@ -671,3 +694,87 @@ class RatingInTime(InTimeCommand):
     @property
     def answers(self):
         return load_data.get_rating(self.options)
+
+
+class RatingByDivider(DivisionCommand):
+    stacked = True
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings[['user', 'value']]
+        div = divider.Divider.get_divider(self.options)
+        answers = load_data.get_answers(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        users = answers.drop_duplicates(['user'])
+        ratings = pd.merge(
+            ratings,
+            users,
+            left_on=['user'],
+            right_on=['user'],
+        )
+        ratings = ratings[['value', new_column_name, 'user']]
+        grouped = ratings.groupby(['value', new_column_name]).count()
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index=new_column_name,
+            columns='value',
+            values='user')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(columns=RATING_VALUES, inplace=True)
+        return grouped
+
+
+class FeedbackInTime(InTimeCommand):
+    groupby_column = 'const'
+    date_precision = 7
+    absolute_values = True
+    kind = 'bar'
+
+    @property
+    def answers(self):
+        return load_data.get_feedback_data()
+
+
+class FeedbackByWeekday(InTimeCommand):
+    groupby_column = 'const'
+    date_precision = 'weekday'
+    absolute_values = True
+    kind = 'bar'
+
+    @property
+    def answers(self):
+        return load_data.get_feedback_data()
+
+
+class FeedbackByType(Command):
+    kind = 'pie'
+    subplots = True
+    legend_bbox = (0.75, -01.0)
+
+    def get_data(self):
+        feedback = load_data.get_feedback_data_with_type()
+        print len(feedback)
+        grouped = feedback.groupby(['type']).count()
+        grouped = grouped[['inserted']]
+        grouped = grouped.sort('inserted', ascending=False)
+        grouped.columns = ['']
+        return grouped
+
+
+class FeedbackWordCountHistogram(Command):
+    kind = 'hist'
+
+    def get_data(self):
+        feedback = load_data.get_feedback_data()
+        feedback['log_10(word_count)'] = feedback['word_count'].map(lambda x: math.log(x, 10))
+        feedback = feedback[['log_10(word_count)']]
+        return feedback

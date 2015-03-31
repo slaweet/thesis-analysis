@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 from main import DATA_DIR
+import datetime
 
 
 def get_mnemonics(options):
@@ -11,7 +12,7 @@ def get_mnemonics(options):
     data_file = os.path.join(options.data_dir, data_file)
     mnemonics = pd.read_csv(data_file, dtype=unicode, sep='\t', header=None)
     mnemonics = mnemonics[mnemonics[1].notnull()]
-    places = read_csv(DATA_DIR + 'geography.place.csv', options)
+    places = read_csv(DATA_DIR + 'geography.place.csv')
     data = pd.merge(
         places,
         mnemonics,
@@ -23,7 +24,7 @@ def get_mnemonics(options):
 
 
 def get_rating(options):
-    ratings = read_csv(options.ratings, options)
+    ratings = read_csv(options.ratings)
     ratings = ratings.sort(['user', 'inserted'], ascending=True)
     rating_orders = []
     order_by_user = {}
@@ -65,7 +66,7 @@ def get_answers(options):
         'language': str,
         'test_id': np.float16          # because of NAs
     }
-    answers = read_csv(options.answers, options, col_types)
+    answers = read_csv(options.answers, col_types)
     answers['correct'] = answers['place_asked'] == answers['place_answered']
     return answers
 
@@ -137,9 +138,81 @@ def get_maps(options):
     return maps
 
 
-def read_csv(data_file, options, dtype=None):
-    data = pd.read_csv(data_file, dtype=dtype)  # , dtype={'user': numpy.float64})
-    if options.verbose:
-        print "File", data_file, "data lenght", len(data)
-        print data.head()
+def get_prior_skills(options):
+    col_types = {
+        'user': np.uint32,
+        'value': np.float16,
+    }
+    ab_values = read_csv(DATA_DIR + 'geography.skill.csv', col_types)
+    return ab_values
+
+
+FEEDBACK_TYPES = {
+    "0": "Other",  # "spam",
+    "1": "Praise",
+    "2": "Other",  # "wrong missing",
+    "3": "Content request",
+    "4": "Functionality request",
+    "5": "Error in content",
+    "6": "Error in \nfunctionality",
+    "7": "No information value",
+    "8": "Other",
+}
+
+
+def get_feedback_data_with_type():
+    data = read_csv('data/feedback_with_types_added.csv', unicode)
+    data['type'] = data['type'].apply(lambda x: FEEDBACK_TYPES[x])
+    return data
+
+
+def get_feedback_data():
+    data = read_csv('data/messages.csv', unicode)
+    data['text'] = data['message'].apply(parse_msg)
+    data['inserted'] = data['date'].apply(parse_date)
+    data = data[['inserted', 'text']]
+    data['text_length'] = data['text'].apply(lambda x: len(x))
+    data['word_count'] = data['text'].apply(lambda x: len(x.split()))
+    data['const'] = 'Number of received messages'
+    data['id'] = data['text_length']
+    data = data.drop_duplicates('text')
+    data = data[data['word_count'] > 1]
+    data = data[data['text_length'] < 10000]
+    data.to_csv(DATA_DIR + 'feedback_with_types.csv')
+    data = data.sort('word_count', ascending=False)
+    return data
+
+
+def count_keywords(data):
+    data = data.sort('word_count')
+    keywords = ['super', 'chyb', 'řek', 'pohoří', 'moř']
+    counts = {}
+    for keyword in keywords:
+        data[keyword] = data['text'].apply(lambda x: keyword in x.lower())
+        df = data[data[keyword]]
+        counts[keyword] = len(df)
+    return counts
+
+
+def parse_msg(text):
+    parts = text.split('##')
+    if len(parts) == 5:
+        return parts[2].strip()
+
+    parts = text.split('feedback:\r\n')
+    if len(parts) == 2:
+        parts = parts[1].split('\r\nemail:')
+        if len(parts) == 2:
+            return parts[0].strip()
+    return ''
+
+
+def parse_date(x):
+    date, time = x.split(' ')
+    datetime_list = map(int, date.split('.')[::-1] + time.split(':'))
+    return datetime.datetime(*datetime_list).isoformat(' ')
+
+
+def read_csv(data_file, dtype=None):
+    data = pd.read_csv(data_file, dtype=dtype)
     return data
