@@ -12,7 +12,7 @@ def main():
     p = optparse.OptionParser()
 
     p.add_option("-a", "--answers", action="store",
-                 dest="answers", default=DATA_DIR + 'geography.answer.csv',
+                 dest="answers", default=DATA_DIR + 'answers.csv',
                  help="path to file with answers inside data dir")
 
     p.add_option("-b", "--ab_values", action="store",
@@ -28,12 +28,24 @@ def main():
                  help="lower_case_hyphenated name of class to separate the answers")
 
     p.add_option("-r", "--ratings", action="store",
-                 dest="ratings", default=DATA_DIR + 'feedback.rating.csv',
+                 dest="ratings", default=DATA_DIR + 'ratings.csv',
                  help="path to file with answers inside data dir")
 
     p.add_option("-v", "--verbose", action="store_true",
                  dest="verbose", default=False,
                  help="print extra stuff")
+
+    p.add_option("-p", "--production", action="store_true",
+                 dest="production", default=False,
+                 help="create production quality graphs")
+
+    p.add_option("-c", "--context_name", action="store",
+                 dest="context_name", default=None,
+                 help="use only answers on given context_name")
+
+    p.add_option("-t", "--term_type", action="store",
+                 dest="term_type", default=None,
+                 help="use only answers on given type of terms")
     options, arguments = p.parse_args()
 
     possible_commands = dict([

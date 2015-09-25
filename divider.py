@@ -1,5 +1,6 @@
 import utils
 import load_data
+import math
 
 
 class Divider(object):
@@ -167,6 +168,30 @@ class IsFast(Divider):
             in times_by_user
             if seconds < treshold * 1000]
         return fast_users
+
+
+"""
+class HighResponseTimeVariance(Divider):
+    min_treshold = 0
+    max_treshold = 10
+    column_name = 'High Response Variance'
+
+    def get_positive_users(self, answers, treshold=1):
+        answers = answers[answers['response_time'] > 0]
+        answers['response_time'] = answers['response_time'].apply(
+            lambda x: math.log(x, 2))
+        users = answers.groupby(['user']).var()
+        users = users.reset_index().drop_duplicates('user')
+        users = users.set_index(['user'])
+        times_by_user = users['response_time']
+        times_by_user = times_by_user.to_dict().items()
+        fast_users = [
+            user
+            for (user, seconds)
+            in times_by_user
+            if seconds < treshold]
+        return fast_users
+"""
 
 
 def to_seconds(datetime_string):

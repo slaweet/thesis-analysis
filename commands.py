@@ -7,6 +7,8 @@ import pandas as pd
 import utils
 import datetime
 import math
+from scipy import stats
+
 
 DATA_DIR = 'data/'
 PLOT_DIR = 'plot/'
@@ -42,19 +44,15 @@ RATING_VALUES = {
     3: 'Too difficult',
 }
 
+AB_VALUES = {
+    6: 'R-A',
+    7: 'R-R',
+    8: 'A-A',
+    9: 'A-R',
+}
+
 
 class Command(object):
-    kind = 'bar'
-    subplots = False
-    adjust_bottom = 0.1
-    legend_alpha = False
-    ylim = None
-    legend_loc = None
-    legend_bbox = None
-    active = True
-    rot = None
-    stacked = None
-    week_cache = {}
 
     @staticmethod
     def name(self):
@@ -63,50 +61,6 @@ class Command(object):
     def __init__(self, options, show_plots=True):
         self.options = options
         self.show_plots = show_plots
-
-    def generate_graph(self, data):
-        print len(data)
-        print data.head()
-        data.plot(
-            kind=self.kind,
-            subplots=self.subplots,
-            title=self.plot_name(),
-            rot=self.rot,
-            stacked=self.stacked,
-        )
-        fig = plt.gcf()
-        if self.ylim is not None:
-            axes = plt.gca()
-            axes.set_ylim(self.ylim)
-
-        fig.subplots_adjust(bottom=self.adjust_bottom)
-        ax = fig.add_subplot(111)
-        if self.legend_loc is not None:
-            legend = ax.legend(loc=self.legend_loc)
-        elif self.legend_bbox is not None:
-            legend = ax.legend(bbox_to_anchor=self.legend_bbox)
-        else:
-            legend = ax.legend()
-        if self.legend_alpha:
-            legend.get_frame().set_alpha(0.8)
-
-        plt.savefig(self.file_name())
-        if self.show_plots:
-            plt.show()
-        plt.clf()
-
-    def file_name(self):
-        if self.options.answers == DATA_DIR + 'geography.answer.csv':
-            dest_dir = PLOT_DIR
-        else:
-            dest_dir = PARTIAL_DATA_PLOT_DIR
-        return (dest_dir + utils.convert_from_cammel_case(
-            self.plot_name()
-        ).replace(' ', '_') + '.png')
-
-    def plot_name(self):
-        return (self.__class__.__name__ + ' ' +
-                self.options.answers.replace('data/', '').replace('.csv', ''))
 
     def execute(self):
         if self.options.divider == 'all':
@@ -118,6 +72,102 @@ class Command(object):
                 self._execute()
         else:
             self._execute()
+
+
+class PlotCommand(Command):
+    kind = 'bar'
+    subplots = False
+    adjust_bottom = 0.1
+    adjust_right = 0.95
+    legend_alpha = False
+    ylim = None
+    legend_loc = None
+    legend_bbox = None
+    active = True
+    rot = None
+    stacked = None
+    week_cache = {}
+    scatter_x = None
+    scatter_y = None
+    scatter_c = None
+    fontsize = None
+    legend = None
+    color = None
+
+    def __init__(self, options, show_plots=True):
+        self.options = options
+        self.show_plots = show_plots
+
+    def generate_graph(self, data):
+        print len(data)
+        print (data.head() if len(data) > 10 else data)
+        plot_params = dict(
+            kind=self.kind,
+            subplots=self.subplots,
+            title=self.plot_name() if not self.options.production else '',
+            rot=self.rot,
+            stacked=self.stacked,
+            fontsize=self.fontsize,
+            legend=self.legend,
+        )
+        if self.color is not None:
+            plot_params.update(dict(
+                color=self.color,
+            ))
+        if self.scatter_c is not None:
+            plot_params.update(dict(
+                x=self.scatter_x,
+                y=self.scatter_y,
+                c=self.scatter_c,
+                # s=20,
+                # marker='+',
+            ))
+        data.plot(**plot_params)
+        data.to_pickle(self.file_name().replace(
+            '.png', '.pdy').replace(
+            'plot', 'plot_data'))
+        fig = plt.gcf()
+        if self.ylim is not None:
+            axes = plt.gca()
+            axes.set_ylim(self.ylim)
+
+        fig.subplots_adjust(bottom=self.adjust_bottom, right=self.adjust_right)
+        ax = fig.add_subplot(111)
+        if self.legend is False:
+            pass
+        elif self.legend_loc is not None:
+            legend = ax.legend(loc=self.legend_loc)
+        elif self.legend_bbox is not None:
+            legend = ax.legend(bbox_to_anchor=self.legend_bbox)
+        else:
+            legend = ax.legend()
+        if self.legend_alpha:
+            legend.get_frame().set_alpha(0.8)
+
+        plt.savefig(self.file_name())
+        if self.options.production:
+            plt.savefig(self.file_name().replace('.png', '.svg'))
+        if self.show_plots:
+            plt.show()
+        plt.clf()
+
+    def file_name(self):
+        if self.options.answers == DATA_DIR + 'answers.csv':
+            dest_dir = PLOT_DIR
+        else:
+            dest_dir = PARTIAL_DATA_PLOT_DIR
+        return (dest_dir + utils.convert_from_cammel_case(
+            self.plot_name()
+        ).replace(' ', '_') + '.png')
+
+    def plot_name(self):
+        return (self.__class__.__name__ +
+                (' ' + self.options.answers.replace('data/', '').replace(
+                    '.csv', '') if not self.options.production else '') +
+                (' ' + self.options.context_name if
+                    self.options.context_name is not None else '') +
+                (' ' + self.options.term_type if
+                    self.options.term_type is not None else ''))
 
     def _execute(self):
         data = self.get_data()
@@ -146,35 +196,40 @@ class Command(object):
         return weekday
 
     def add_week(self, answers, field_name):
-        answers[field_name] = answers['inserted'].map(
+        answers[field_name] = answers['time'].map(
             lambda x:
-            x[:5] + 'w' +
+            x[:4] + ' week ' +
             str(self.get_week(x)).zfill(2))
         return answers
 
     def add_weekday(self, answers, field_name):
-        answers[field_name] = answers['inserted'].map(
+        answers[field_name] = answers['time'].map(
             lambda x: str(self.get_weekday(x)))
         return answers
 
     def add_weekday_and_time(self, answers, field_name):
-        answers[field_name] = answers['inserted'].map(
-            lambda x: str(self.get_weekday(x)) + '-' + x[11:13])
+        weekdays = 'MON THU WED THU FRI SAT SUN'.split()
+        for i in range(len(weekdays)):
+            weekdays[i] = ' ' * (len(weekdays) - i) + weekdays[i]
+        answers[field_name] = answers['time'].map(
+            lambda x: str(weekdays[self.get_weekday(x)]) +
+            ' ' + x[11:13] + ':00')
         return answers
 
     def get_data(self):
         pass
 
 
-class DivisionCommand(Command):
+class DivisionCommand(PlotCommand):
 
     def plot_name(self):
         return (self.__class__.__name__ + ' ' +
-                self.options.divider + ' ' +
-                self.options.answers.replace('data/', '').replace('.csv', ''))
+                self.options.divider +
+                (' ' + self.options.answers.replace('data/', '').replace(
+                    '.csv', '') if not self.options.production else ''))
 
 
-class MnemonicsEffect(Command):
+class MnemonicsEffect(PlotCommand):
     active = False
     seen_times = {}
 
@@ -224,7 +279,7 @@ class MnemonicsEffect(Command):
         return answers
 
 
-class FilterLithuania(Command):
+class FilterLithuania(PlotCommand):
     active = False
 
     def get_data(self):
@@ -235,7 +290,7 @@ class FilterLithuania(Command):
         return answers
 
 
-class FilterEuropeStates(Command):
+class FilterEuropeStates(PlotCommand):
     active = False
 
     def get_data(self):
@@ -250,7 +305,7 @@ class FilterEuropeStates(Command):
         return answers
 
 
-class PlacesByMap(Command):
+class PlacesByMap(PlotCommand):
     adjust_bottom = 0.3
 
     def get_data(self):
@@ -262,7 +317,7 @@ class PlacesByMap(Command):
         return maps
 
 
-class PlacesByMapAndType(Command):
+class PlacesByMapAndType(PlotCommand):
     adjust_bottom = 0.3
 
     def get_data(self):
@@ -289,7 +344,7 @@ class PlacesByMapAndType(Command):
         return maps
 
 
-class SuccessByMap(Command):
+class SuccessByMap(PlotCommand):
     def get_data(self):
         answers_with_maps = load_data.get_answers_with_map_grouped(self.options)
         success_rate_by_map = answers_with_maps.mean().sort('correct')
@@ -298,7 +353,9 @@ class SuccessByMap(Command):
 
 class Division(DivisionCommand):
     legend_loc = 'best'
+    fontsize = 25
     ylim = [0, 1]
+    legend = False
 
     def get_data(self):
         answers = load_data.get_answers(self.options)
@@ -346,7 +403,7 @@ class AnswersByMap(DivisionCommand):
         return answers_by_map
 
 
-class InTimeCommand(Command):
+class InTimeCommand(PlotCommand):
     kind = 'area'
     stacked = True
     legend_alpha = True
@@ -472,6 +529,7 @@ class AnswersByWeekdayAbsolute(AnswersInDayAbsolute):
 class AnswersByWeekdayAndTimeAbsolute(AnswersInDayAbsolute):
     date_precision = 'weekday_and_time'
     date_offset = 0
+    adjust_bottom = 0.2
 
 
 class UsersInDayAbsolute(AnswersInDayAbsolute):
@@ -518,7 +576,7 @@ class CorrectRateInTime(InTimeCommand):
     date_precision = 9
 
 
-class DividerSimilarity(Command):
+class DividerSimilarity(PlotCommand):
     adjust_bottom = 0.4
 
     def get_data(self):
@@ -533,7 +591,7 @@ class DividerSimilarity(Command):
         return grouped
 
 
-class DividerCorrelation(Command):
+class DividerCorrelation(PlotCommand):
     adjust_bottom = 0.3
 
     def get_data(self):
@@ -553,7 +611,8 @@ class DivisionInTime(InTimeCommand):
     def plot_name(self):
         return (self.__class__.__name__ + ' ' +
                 self.options.divider + ' ' +
-                self.options.answers.replace('data/', '').replace('.csv', ''))
+                (self.options.answers.replace('data/', '').replace(
+                    '.csv', '') if not self.options.production else ''))
 
     @property
     def answers(self):
@@ -563,6 +622,67 @@ class DivisionInTime(InTimeCommand):
         answers = div.divide(answers, new_column_name)
         self.groupby_column = new_column_name
         return answers
+
+
+class ResponseTimeByDivider(Command):
+    def _execute(self):
+        answers = load_data.get_answers(self.options, strip_times=True)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        answers['response_time'] = answers['response_time'].apply(
+            lambda x: math.log(x, 2))
+        cat1 = answers[answers[div.column_name] == True]['response_time']
+        cat2 = answers[answers[div.column_name] == False]['response_time']
+        print cat1.describe()
+        print cat2.describe()
+        print stats.ranksums(cat1, cat2)
+        """
+        answers = answers[[new_column_name, 'response_time', 'user']]
+        grouped = answers.groupby(['user', new_column_name]).median()
+        # grouped = grouped.reset_index()
+        return grouped
+        """
+
+
+class ResponseTimeVsSkill(PlotCommand):
+    kind = 'scatter'
+    scatter_x = 'response_time'
+    scatter_y = 'skill'
+    scatter_c = 'log_10(count)'
+
+    def get_data(self):
+        answers = load_data.get_answers(
+            self.options, strip_times=True,
+            strip_less_than_10=True)
+        div = divider.Divider.get_divider(self.options)
+        # self.scatter_c = div.column_name
+        answers = div.divide(answers, div.column_name)
+        grouped = answers.groupby(['user']).median()
+        response_times = grouped.reset_index()
+        skills = load_data.get_prior_skills(self.options)
+        skills.rename(columns={'value': 'skill'}, inplace=True)
+        answers_with_skills = pd.merge(
+            response_times,
+            skills,
+            left_on=['user'],
+            right_on=['user'],
+        )
+        counts = answers.groupby(['user']).count().reset_index()
+        counts['log_10(count)'] = counts['id'].map(lambda x: math.log(x, 10))
+        counts = counts[['user', 'log_10(count)']]
+        answers_with_skills = pd.merge(
+            answers_with_skills,
+            counts,
+            left_on=['user'],
+            right_on=['user'],
+        )
+        answers_with_skills = answers_with_skills[
+            [self.scatter_x, self.scatter_y, self.scatter_c]]
+        # print answers_with_skills.describe()
+        corr = answers_with_skills.corr()
+        print corr
+        return answers_with_skills
 
 
 class AnswersByDividerInDay(DivisionInTime):
@@ -579,7 +699,7 @@ class AnswersByDividerInWeekByHour(DivisionInTime):
     date_precision = 'weekday_and_time'
 
 
-class AnswersByUserHistogram(Command):
+class AnswersByUserHistogram(PlotCommand):
     kind = 'hist'
 
     def get_data(self):
@@ -591,13 +711,245 @@ class AnswersByUserHistogram(Command):
         return grouped
 
 
-class RatingByMap(Command):
+class AnswerPlacesHistogram(PlotCommand):
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        answers = load_data.get_answers_with_map(self.options)
+        answers = answers[answers['map_name'] == 'Europe']
+        answers = answers[answers['place_type'] == 1]
+        grouped = answers.groupby(['place_name']).count()
+        # grouped = grouped.reset_index()
+        grouped = grouped.sort('id', ascending=False)
+        grouped = grouped[['id']]
+        return grouped
+
+
+class AnswerPlacesByUserHistogram(PlotCommand):
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        answers = load_data.get_answers_with_map(self.options)
+        answers = answers[answers['map_name'] == 'Europe']
+        answers = answers[answers['place_type'] == 1]
+        grouped = answers.groupby(['place_name', 'user']).count()
+        # grouped = grouped.reset_index()
+        grouped = grouped.sort('id', ascending=False)
+        grouped = grouped[['id']]
+        return grouped
+
+
+class RatingByMap(PlotCommand):
+    adjust_bottom = 0.3
+
     def get_data(self):
         ratings = load_data.get_rating_with_maps(self.options)
+        ratings = ratings[['context_name', 'term_type',  'context_item_count', 'correct']]
+        ratings = ratings.groupby(['context_name', 'term_type']).agg(['mean', 'count'])
+        ratings = ratings.sort(('context_item_count', 'mean'), ascending=True)
+        ratings = ratings[ratings[('correct', 'count')] > 1]
+        ratings = ratings[[('correct', 'mean')]]
+        # ratings = ratings.reset_index()
         return ratings
 
 
-class RatingOrderByValue(Command):
+class ResponseTimeByPrevious(PlotCommand):
+    # kind = 'hist'
+
+    def add_prev(self, answers, key):
+        answers = answers.sort(['user_id', 'time'], ascending=False)
+        prev_correct = []
+        grouped = answers.groupby('user_id')
+        for i, g in grouped:
+            prev = None
+            for j, row in g[key].iteritems():
+                if prev is not None:
+                    prev_correct.append(row)
+                else:
+                    prev_correct.append(-1)
+                prev = row
+        answers['prev_' + key] = pd.Series(prev_correct, index=answers.index)
+        return answers
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = self.add_prev(answers, 'correct')
+        answers = self.add_prev(answers, 'direction')
+        answers = answers[answers['prev_correct']!=-1]
+        answers = answers[answers['response_time'] < 30000]
+        answers = answers[answers['response_time'] > 0]
+        # answers = answers[answers['correct']==True]
+        answers['same_direction'] = answers['direction'] == answers['prev_direction']
+        answers = answers[['prev_correct', 'same_direction', 'response_time']]
+        times = answers.groupby(['prev_correct', 'same_direction']).median()
+        return times
+
+
+class RatingByContextSize(PlotCommand):
+    kind = 'area'
+    stacked = True
+    adjust_right = 0.65
+    legend_bbox = (1.65, 0.9)
+    color = ['b', 'g', 'r']
+    ylim = [0, 4]
+
+    def make_relative(self, grouped):
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        return grouped
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_maps(self.options)
+        res2 = []
+        res = None
+        for i in range(6, 10):
+            ratings_ab = ratings[ratings['experiment_setup_id'] == i]
+            grouped = ratings_ab.groupby(['value', 'context_size']).count()
+            grouped = grouped[['inserted']]
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='context_size',
+                columns='value',
+                values='inserted')
+            grouped = self.make_relative(grouped)
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            columns = [(AB_VALUES[i], j) for j in grouped.columns]
+            grouped.columns = pd.MultiIndex.from_tuples(columns)
+            if res is None:
+                res = grouped
+            else:
+                res = res.join(grouped, how='right', lsuffix='_x')
+            res2.append(grouped)
+        return res
+
+
+class FirstAnswerUnanswered(InTimeCommand):
+    kind = 'line'
+    stacked = False
+    legend_loc = 'lower right'
+    ylim = None
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers['is_not_answered'] = answers['item_answered_id'].map(lambda x: math.isnan(x))
+        answers['is_first'] = answers['answer_order'].map(lambda x: x == 1)
+        answers = self.add_week(answers, 'date')
+        answers = answers[['date', 'is_not_answered', 'guess']]
+        grouped = answers.groupby(['date', 'guess']).mean()
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='date',
+            columns='guess',
+            values='is_not_answered')
+        return grouped
+
+
+class SecondAnswer(PlotCommand):
+    kind = 'line'
+    legend_loc = 'lower right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] == 3]
+        answers = answers[answers['context_id'] != 17]
+        answers = answers[answers['metainfo_id'] == 1]
+        # grouped = answers.groupby(['user_id']).count()
+        # grouped = grouped[['id']]
+        # grouped = grouped.reset_index()
+        # grouped = grouped[grouped['id'] == 2]
+        grouped = answers
+        return grouped
+
+
+class SuccessByAnswerOrder(PlotCommand):
+    kind = 'line'
+    legend_loc = 'lower right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        grouped = grouped[['correct']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='correct')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class AnswerCountByOrder(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['metainfo_id'] == 1]
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).count()
+        grouped = grouped[['correct']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='correct')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class ResponseTimeByAnswerOrder(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order']).median()
+        grouped = grouped.reset_index()
+        grouped = grouped[['response_time']]
+        return grouped
+
+
+class ResponseTimeByAnswerOrderAb(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).median()
+        grouped = grouped[['response_time']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='response_time')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class SuccessByContextSize(PlotCommand):
+    kind = 'area'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards(self.options)
+        # answers = answers[answers['metainfo_id'] != 1]
+        grouped = answers.groupby(['context_size']).mean()
+        grouped = grouped[['correct']]
+        return grouped
+
+
+class RatingOrderByValue(PlotCommand):
     stacked = True
 
     def get_data(self):
@@ -620,7 +972,7 @@ class RatingOrderByValue(Command):
         return grouped
 
 
-class RatingByOrder(Command):
+class RatingByOrder(PlotCommand):
     stacked = True
     legend_loc = 'center right'
 
@@ -645,7 +997,7 @@ class RatingByOrder(Command):
         return grouped
 
 
-class RatingByLastOrder(Command):
+class RatingByLastOrder(PlotCommand):
     stacked = True
     legend_loc = 'center right'
 
@@ -670,7 +1022,7 @@ class RatingByLastOrder(Command):
         return grouped
 
 
-class RatingValueHistogram(Command):
+class RatingValueHistogram(PlotCommand):
     kind = 'hist'
 
     def get_data(self):
@@ -679,7 +1031,7 @@ class RatingValueHistogram(Command):
         return ratings
 
 
-class RatingOrderHistogram(Command):
+class RatingOrderHistogram(PlotCommand):
     kind = 'hist'
 
     def get_data(self):
@@ -699,6 +1051,7 @@ class RatingInTime(InTimeCommand):
 class RatingByDivider(DivisionCommand):
     stacked = True
     adjust_bottom = 0.2
+    fontsize = 25
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
@@ -733,6 +1086,93 @@ class RatingByDivider(DivisionCommand):
         return grouped
 
 
+class RatingByDividers(PlotCommand):
+    stacked = True
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        self.options.divider = 'all'
+        divs = divider.Divider.get_divider(self.options)
+        ret = None
+        for i in divs:
+            div = divs[i](self.options)
+            print div.column_name
+            data = self._get_data(div)
+            ret = data if ret is None else ret.append(data)
+        return ret
+
+    def _get_data(self, div):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings[['user', 'value']]
+        answers = load_data.get_answers(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        users = answers.drop_duplicates(['user'])
+        ratings = pd.merge(
+            ratings,
+            users,
+            left_on=['user'],
+            right_on=['user'],
+        )
+        ratings = ratings[['value', new_column_name, 'user']]
+        grouped = ratings.groupby(['value', new_column_name]).count()
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index=new_column_name,
+            columns='value',
+            values='user')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(columns=RATING_VALUES, inplace=True)
+        return grouped
+
+
+class SuccessByDividers(PlotCommand):
+    stacked = True
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        self.options.divider = 'all'
+        divs = divider.Divider.get_divider(self.options)
+        ret = None
+        for i in divs:
+            div = divs[i](self.options)
+            print div.column_name
+            data = self._get_data(div)
+            ret = data if ret is None else ret.append(data)
+        return ret
+
+    def _get_data(self, div):
+        answers = load_data.get_answers(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        answers = answers[['correct', new_column_name, 'id']]
+        grouped = answers.groupby(['correct', new_column_name]).count()
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index=new_column_name,
+            columns='correct',
+            values='id')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(
+            columns={True: 'Correct answers', False: 'Incorrect answers'},
+            inplace=True)
+        return grouped
+
+
 class FeedbackInTime(InTimeCommand):
     groupby_column = 'const'
     date_precision = 7
@@ -755,7 +1195,7 @@ class FeedbackByWeekday(InTimeCommand):
         return load_data.get_feedback_data()
 
 
-class FeedbackByType(Command):
+class FeedbackByType(PlotCommand):
     kind = 'pie'
     subplots = True
     legend_bbox = (0.75, -01.0)
@@ -766,11 +1206,17 @@ class FeedbackByType(Command):
         grouped = feedback.groupby(['type']).count()
         grouped = grouped[['inserted']]
         grouped = grouped.sort('inserted', ascending=False)
+        """
+        grouped = grouped.reset_index()
+        grouped['type'] = grouped['type'] + grouped['inserted'].apply(
+            lambda x: ' (' + str(x) + ')')
+        grouped = grouped.set_index('type')
+        """
         grouped.columns = ['']
         return grouped
 
 
-class FeedbackWordCountHistogram(Command):
+class FeedbackWordCountHistogram(PlotCommand):
     kind = 'hist'
 
     def get_data(self):

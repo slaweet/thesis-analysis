@@ -5,6 +5,9 @@ import numpy as np
 import os
 from main import DATA_DIR
 import datetime
+import bisect
+
+RATING_INTERVALS = [30, 70, 120, 200]
 
 
 def get_mnemonics(options):
@@ -25,39 +28,62 @@ def get_mnemonics(options):
 
 def get_rating(options):
     ratings = read_csv(options.ratings)
-    ratings = ratings.sort(['user', 'inserted'], ascending=True)
+    ratings = ratings.sort(['user_id', 'inserted'], ascending=True)
     rating_orders = []
     order_by_user = {}
-    grouped = ratings.groupby('user')
+    grouped = ratings.groupby('user_id')
     for i, g in grouped:
         order_by_user[i] = 0
         for j, row in g['value'].iteritems():
             order_by_user[i] += 1
             rating_orders.append(order_by_user[i])
-    ratings['order'] = pd.Series(rating_orders, index=ratings.index)
-    ratings['last_order'] = ratings['user'].map(lambda x: order_by_user[x])
+    ratings['rating_order'] = pd.Series(rating_orders, index=ratings.index)
+    ratings['last_order'] = ratings['user_id'].map(lambda x: order_by_user[x])
     ratings = ratings[ratings['last_order'] <= 4]
     return ratings
 
 
+def get_answers_with_flashcards_and_orders(options):
+    answers_with_flashcards = get_answers_with_flashcards(options)
+    answers_with_flashcards = answers_with_flashcards.sort(
+        ['user_id', 'time'], ascending=True)
+
+    answer_orders = []
+    order_by_user = {}
+    answers_with_flashcards = answers_with_flashcards[answers_with_flashcards['context_id'] != 17]
+    answers_with_flashcards = answers_with_flashcards[answers_with_flashcards['context_id'].isin([1, 86])]
+    grouped = answers_with_flashcards.groupby('user_id')
+    for i, g in grouped:
+        order_by_user[i] = 0
+        for j, row in g['item_id'].iteritems():
+            order_by_user[i] += 1
+            answer_orders.append(order_by_user[i])
+    answers_with_flashcards['answer_order'] = pd.Series(
+        answer_orders, index=answers_with_flashcards.index)
+    return answers_with_flashcards
+
+
 def get_rating_with_maps(options):
     ratings = get_rating(options)
-    answers_with_maps = get_answers_with_map(options)
+    ratings['answer_order'] = ratings['rating_order'].map(lambda x: RATING_INTERVALS[x - 1])
+    answers = get_answers_with_flashcards_and_orders(options)
+
     ratings_with_maps = pd.merge(
         ratings,
-        answers_with_maps,
-        left_on=['user'],
-        right_on=['user'],
+        answers,
+        left_on=['user_id', 'answer_order'],
+        right_on=['user_id', 'answer_order'],
     )
     return ratings_with_maps
 
 
-def get_answers(options):
+def get_answers(options, strip_times=False, strip_less_than_10=False):
     col_types = {
-        'user': np.uint32,
+        'user_id': np.uint32,
         'id': np.uint32,
-        'place_asked': np.uint16,
-        'place_answered': np.float16,  # because of NAs
+        'item_id': np.uint32,
+        'item_asked_id': np.uint32,
+        'item_answered_id': np.float32,  # because of NAs
         'type': np.uint8,
         'response_time': np.uint32,
         'number_of_options': np.uint8,
@@ -67,7 +93,15 @@ def get_answers(options):
         'test_id': np.float16          # because of NAs
     }
     answers = read_csv(options.answers, col_types)
-    answers['correct'] = answers['place_asked'] == answers['place_answered']
+    answers['correct'] = answers['item_id'] == answers['item_answered_id']
+    if strip_times:
+        answers = answers[answers['response_time'] > 0]
+        answers = answers[answers['response_time'] < 30000]
+    if strip_less_than_10:
+        grouped = answers.groupby('user').count()
+        grouped = grouped.reset_index()
+        more10 = grouped[grouped['inserted'] >= 10]['user']
+        answers = answers[answers['user'].isin(more10)]
     return answers
 
 
@@ -91,51 +125,46 @@ def get_answers_with_ab(options, answers=None):
 
 
 def get_answers_with_map_grouped(options):
-    answers_with_maps = get_answers_with_map(options)
+    answers_with_maps = get_answers_with_flashcards(options)
     answers_with_maps = answers_with_maps.groupby(['map_name'])
     return answers_with_maps
 
 
-def get_answers_with_map(options):
+def get_answers_with_flashcards(options):
     answers = get_answers(options)
-    maps = get_maps(options)
-    answers_with_maps = pd.merge(
+    flashcards = get_flashcards(options)
+    answers_with_flashcards = pd.merge(
         answers,
-        maps,
-        left_on=['place_asked'],
-        right_on=['place'],
+        flashcards,
+        left_on=['item_id'],
+        right_on=['item_id'],
     )
-    return answers_with_maps
+    if options.context_name is not None:
+        answers_with_flashcards = answers_with_flashcards[
+            answers_with_flashcards['context_name'] == options.context_name]
+    if options.term_type is not None:
+        answers_with_flashcards = answers_with_flashcards[
+            answers_with_flashcards['term_type'] == options.term_type]
+    return answers_with_flashcards
 
 
-def get_maps(options):
-    places = read_csv(DATA_DIR + 'geography.place.csv', options)
-    placerelations = read_csv(DATA_DIR + 'geography.placerelation.csv', options)
-    placerelations_related = read_csv(
-        DATA_DIR + 'geography.placerelation_related_places.csv', options)
-    maps = pd.merge(
-        placerelations,
-        placerelations_related,
-        left_on=['id'],
-        right_on=['placerelation'],
+def get_flashcards(options):
+    flashcards = read_csv(DATA_DIR + 'flashcards.csv')
+    contexts = flashcards.groupby(['context_name', 'term_type']).count()
+    contexts = contexts[['item_id']]
+    contexts = contexts.reset_index()
+    contexts.rename(columns={'item_id': 'context_item_count'}, inplace=True)
+    step = 20
+    contexts['context_size'] = contexts['context_item_count'].map(
+        lambda x: bisect.bisect_left(
+            range(step, 160, step), x) * step + step / 2)
+    flashcards = pd.merge(
+        contexts,
+        flashcards,
+        left_on=['context_name', 'term_type'],
+        right_on=['context_name', 'term_type'],
     )
-    maps = maps[maps.type == 1]
-    maps = pd.merge(
-        maps,
-        places,
-        left_on=['place_x'],
-        right_on=['id'],
-    )
-    maps = pd.merge(
-        maps,
-        places,
-        left_on=['place_y'],
-        right_on=['id'],
-    )
-    # print maps.head()
-    maps = maps[['place_x', 'place_y', 'name_en_y', 'name_en_x', 'type']]
-    maps.columns = ['map', 'place', 'place_name', 'map_name', 'place_type']
-    return maps
+    return flashcards
 
 
 def get_prior_skills(options):
