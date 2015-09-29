@@ -140,14 +140,15 @@ class PlotCommand(Command):
                     # s=20,
                     # marker='+',
                 ))
-            if self.ylim is not None:
-                axes = plt.gca()
-                axes.set_ylim(self.ylim)
 
             fig.subplots_adjust(bottom=self.adjust_bottom, right=self.adjust_right)
             ax = fig.add_subplot(math.sqrt(len(data_list)),
-                                 math.sqrt(len(data_list)), i + 1)
-            if len(data_list) > 1:
+                                 math.ceil(math.sqrt(len(data_list))), i + 1)
+
+            if self.ylim is not None:
+                ax.set_ylim(self.ylim)
+
+            if len(data_list) > 1 and hasattr(data.columns, 'levels'):
                 plot_params.update(dict(
                     title=data.columns.levels[0][0],
                 ))
