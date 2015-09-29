@@ -50,9 +50,25 @@ def get_answers_with_flashcards_and_orders(options):
 
     answer_orders = []
     order_by_user = {}
-    answers_with_flashcards = answers_with_flashcards[answers_with_flashcards['context_id'] != 17]
-    answers_with_flashcards = answers_with_flashcards[answers_with_flashcards['context_id'].isin([1, 86])]
     grouped = answers_with_flashcards.groupby('user_id')
+    for i, g in grouped:
+        order_by_user[i] = 0
+        for j, row in g['item_id'].iteritems():
+            order_by_user[i] += 1
+            answer_orders.append(order_by_user[i])
+    answers_with_flashcards['answer_order'] = pd.Series(
+        answer_orders, index=answers_with_flashcards.index)
+    return answers_with_flashcards
+
+
+def get_answers_with_flashcards_and_context_orders(options):
+    answers_with_flashcards = get_answers_with_flashcards(options)
+    answers_with_flashcards = answers_with_flashcards.sort(
+        ['user_id', 'context_id', 'time'], ascending=True)
+
+    answer_orders = []
+    order_by_user = {}
+    grouped = answers_with_flashcards.groupby(['user_id', 'context_id'])
     for i, g in grouped:
         order_by_user[i] = 0
         for j, row in g['item_id'].iteritems():
@@ -98,10 +114,19 @@ def get_answers(options, strip_times=False, strip_less_than_10=False):
         answers = answers[answers['response_time'] > 0]
         answers = answers[answers['response_time'] < 30000]
     if strip_less_than_10:
-        grouped = answers.groupby('user').count()
+        grouped = answers.groupby('user_id').count()
         grouped = grouped.reset_index()
-        more10 = grouped[grouped['inserted'] >= 10]['user']
-        answers = answers[answers['user'].isin(more10)]
+        more10 = grouped[grouped['inserted'] >= 10]['user_id']
+        answers = answers[answers['user_id'].isin(more10)]
+    ip_address = read_csv(DATA_DIR + 'ip_address.csv')
+    answers = pd.merge(
+        answers,
+        ip_address,
+        left_on=['user_id', 'session_id'],
+        right_on=['user_id', 'sesion_id'],
+    )
+    # filter answers collected due to a bug
+    answers = answers[answers['context_id'] != 17]
     return answers
 
 

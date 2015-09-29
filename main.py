@@ -80,7 +80,7 @@ def main():
 
 def print_help(possible_commands):
     print 'Available commands:'
-    print '  ' + '\n  '.join(possible_commands.keys())
+    print '  ' + '\n  '.join(sorted(possible_commands.keys()))
 
 
 class bcolors:

@@ -45,6 +45,13 @@ RATING_VALUES = {
 }
 
 AB_VALUES = {
+    6: 'Random-Adaptive',
+    7: 'Random-Random',
+    8: 'Adaptive-Adaptive',
+    9: 'Adaptive-Random',
+}
+
+AB_VALUES_SHORT = {
     6: 'R-A',
     7: 'R-R',
     8: 'A-A',
@@ -93,56 +100,76 @@ class PlotCommand(Command):
     fontsize = None
     legend = None
     color = None
+    marker = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
         self.show_plots = show_plots
 
     def generate_graph(self, data):
-        print len(data)
-        print (data.head() if len(data) > 10 else data)
-        plot_params = dict(
-            kind=self.kind,
-            subplots=self.subplots,
-            title=self.plot_name() if not self.options.production else '',
-            rot=self.rot,
-            stacked=self.stacked,
-            fontsize=self.fontsize,
-            legend=self.legend,
-        )
-        if self.color is not None:
-            plot_params.update(dict(
-                color=self.color,
-            ))
-        if self.scatter_c is not None:
-            plot_params.update(dict(
-                x=self.scatter_x,
-                y=self.scatter_y,
-                c=self.scatter_c,
-                # s=20,
-                # marker='+',
-            ))
-        data.plot(**plot_params)
-        data.to_pickle(self.file_name().replace(
-            '.png', '.pdy').replace(
-            'plot', 'plot_data'))
-        fig = plt.gcf()
-        if self.ylim is not None:
-            axes = plt.gca()
-            axes.set_ylim(self.ylim)
-
-        fig.subplots_adjust(bottom=self.adjust_bottom, right=self.adjust_right)
-        ax = fig.add_subplot(111)
-        if self.legend is False:
-            pass
-        elif self.legend_loc is not None:
-            legend = ax.legend(loc=self.legend_loc)
-        elif self.legend_bbox is not None:
-            legend = ax.legend(bbox_to_anchor=self.legend_bbox)
+        if type(data) is not list:
+            data_list = [data]
         else:
-            legend = ax.legend()
-        if self.legend_alpha:
-            legend.get_frame().set_alpha(0.8)
+            data_list = data
+
+        fig = plt.gcf()
+
+        for i in range(len(data_list)):
+            data = data_list[i]
+            print len(data)
+            print (data.head() if len(data) > 10 else data)
+            plot_params = dict(
+                kind=self.kind,
+                subplots=self.subplots,
+                title=self.plot_name() if not self.options.production else '',
+                rot=self.rot,
+                stacked=self.stacked,
+                fontsize=self.fontsize,
+                legend=self.legend,
+                marker=self.marker,
+            )
+            if self.color is not None:
+                plot_params.update(dict(
+                    color=self.color,
+                ))
+            if self.scatter_c is not None:
+                plot_params.update(dict(
+                    x=self.scatter_x,
+                    y=self.scatter_y,
+                    c=self.scatter_c,
+                    # s=20,
+                    # marker='+',
+                ))
+            if self.ylim is not None:
+                axes = plt.gca()
+                axes.set_ylim(self.ylim)
+
+            fig.subplots_adjust(bottom=self.adjust_bottom, right=self.adjust_right)
+            ax = fig.add_subplot(math.sqrt(len(data_list)),
+                                 math.sqrt(len(data_list)), i + 1)
+            if len(data_list) > 1:
+                plot_params.update(dict(
+                    title=data.columns.levels[0][0],
+                ))
+            plot_params.update(dict(
+                ax=ax,
+            ))
+
+            data.plot(**plot_params)
+            data.to_pickle(self.file_name().replace(
+                '.png', '.pdy').replace(
+                'plot', 'plot_data'))
+
+            if self.legend is False:
+                pass
+            elif self.legend_loc is not None:
+                legend = ax.legend(loc=self.legend_loc)
+            elif self.legend_bbox is not None:
+                legend = ax.legend(bbox_to_anchor=self.legend_bbox)
+            else:
+                legend = ax.legend()
+            if self.legend_alpha and legend is not None:
+                legend.get_frame().set_alpha(0.8)
 
         plt.savefig(self.file_name())
         if self.options.production:
@@ -234,7 +261,7 @@ class MnemonicsEffect(PlotCommand):
     seen_times = {}
 
     def increment_seen(self, row):
-        user = row['user']
+        user = row['user_id']
         place = row['place_asked']
         if user not in self.seen_times:
             self.seen_times[user] = {}
@@ -247,19 +274,19 @@ class MnemonicsEffect(PlotCommand):
         answers['seen_times'] = 0
         for index, row in answers.iterrows():
             answers.loc[index, "seen_times"] = self.increment_seen(row)
-        # print answers[['user', 'seen_times']]
+        # print answers[['user_id', 'seen_times']]
         return answers
 
     def get_data(self):
-        answers = load_data.get_answers_with_map(self.options)
-        answers = answers.sort(['place_asked', 'user'], ascending=True)
+        answers = load_data.get_answers_with_flashcards(self.options)
+        answers = answers.sort(['place_asked', 'user_id'], ascending=True)
         answers = answers.reset_index()
         answers = self.add_see_times(answers)
         answers = answers[answers['seen_times'] == 1]
 
         MNEMONICS_ADDED_ON = '2014-12-20 06:23:00'
         mnemonics = load_data.get_mnemonics(self.options)
-        answers['after_mnemonics'] = answers['inserted'] > MNEMONICS_ADDED_ON
+        answers['after_mnemonics'] = answers['time'] > MNEMONICS_ADDED_ON
         answers['has_mnemonics'] = answers['place_asked'].isin(mnemonics)
         answers = answers.groupby(['place_name', 'after_mnemonics', 'has_mnemonics']).mean()
         answers = answers.reset_index()
@@ -381,7 +408,7 @@ class AnswersByMap(DivisionCommand):
     adjust_bottom = 0.3
 
     def get_data(self):
-        answers_with_maps = load_data.get_answers_with_map(self.options)
+        answers_with_maps = load_data.get_answers_with_flashcards(self.options)
         div = divider.Divider.get_divider(self.options)
         new_column_name = div.column_name
         answers_with_maps = div.divide(answers_with_maps, new_column_name)
@@ -431,7 +458,7 @@ class InTimeCommand(PlotCommand):
         if self.answers is not None:
             answers = self.answers
         else:
-            answers = load_data.get_answers_with_map(self.options)
+            answers = load_data.get_answers_with_flashcards(self.options)
         if self.date_precision == 'week':
             answers = self.add_week(answers, 'date')
         elif self.date_precision == 'weekday':
@@ -439,7 +466,7 @@ class InTimeCommand(PlotCommand):
         elif self.date_precision == 'weekday_and_time':
             answers = self.add_weekday_and_time(answers, 'date')
         else:
-            answers['date'] = answers['inserted'].map(
+            answers['date'] = answers['time'].map(
                 lambda x: x[self.date_offset:
                             self.date_offset + self.date_precision])
         if self.drop_duplicate is not None:
@@ -493,12 +520,12 @@ class AnswersByMapInDayAbsolute(AnswersByMapInDay):
 
 
 class UsersByMapInTime(AnswersByMapInTime):
-    drop_duplicate = 'user'
+    drop_duplicate = 'user_id'
 
 
 class AnswersByLangInTime(InTimeCommand):
     legend_loc = 'lower left'
-    groupby_column = 'language'
+    groupby_column = 'metainfo_id'
     columns_rename = LANGUAGES
 
 
@@ -508,7 +535,6 @@ class AnswersByLangInDay(AnswersByLangInTime):
 
 
 class AnswersInDayAbsolute(AnswersByLangInTime):
-    result_columns = ['0']
     columns_rename = {'0': 'Number of answers'}
     legend_loc = 'lower right'
     date_precision = 2
@@ -534,12 +560,12 @@ class AnswersByWeekdayAndTimeAbsolute(AnswersInDayAbsolute):
 
 class UsersInDayAbsolute(AnswersInDayAbsolute):
     columns_rename = {'0': 'Number of users'}
-    drop_duplicate = 'user'
+    drop_duplicate = 'user_id'
 
 
 class UsersInDayByMinuteAbsolute(AnswersInDayAbsolute):
     columns_rename = {'0': 'Number of users'}
-    drop_duplicate = 'user'
+    drop_duplicate = 'user_id'
     date_precision = 5
 
 
@@ -554,7 +580,7 @@ class AnswersInTimeAbsolute(AnswersByLangInTime):
 
 class UsersInTimeAbsolute(AnswersInTimeAbsolute):
     columns_rename = {'0': 'Number of users'}
-    drop_duplicate = 'user'
+    drop_duplicate = 'user_id'
 
 
 class AnswersByPlaceTypeInTime(InTimeCommand):
@@ -638,8 +664,8 @@ class ResponseTimeByDivider(Command):
         print cat2.describe()
         print stats.ranksums(cat1, cat2)
         """
-        answers = answers[[new_column_name, 'response_time', 'user']]
-        grouped = answers.groupby(['user', new_column_name]).median()
+        answers = answers[[new_column_name, 'response_time', 'user_id']]
+        grouped = answers.groupby(['user_id', new_column_name]).median()
         # grouped = grouped.reset_index()
         return grouped
         """
@@ -658,24 +684,24 @@ class ResponseTimeVsSkill(PlotCommand):
         div = divider.Divider.get_divider(self.options)
         # self.scatter_c = div.column_name
         answers = div.divide(answers, div.column_name)
-        grouped = answers.groupby(['user']).median()
+        grouped = answers.groupby(['user_id']).median()
         response_times = grouped.reset_index()
         skills = load_data.get_prior_skills(self.options)
         skills.rename(columns={'value': 'skill'}, inplace=True)
         answers_with_skills = pd.merge(
             response_times,
             skills,
-            left_on=['user'],
-            right_on=['user'],
+            left_on=['user_id'],
+            right_on=['user_id'],
         )
-        counts = answers.groupby(['user']).count().reset_index()
+        counts = answers.groupby(['user_id']).count().reset_index()
         counts['log_10(count)'] = counts['id'].map(lambda x: math.log(x, 10))
-        counts = counts[['user', 'log_10(count)']]
+        counts = counts[['user_id', 'log_10(count)']]
         answers_with_skills = pd.merge(
             answers_with_skills,
             counts,
-            left_on=['user'],
-            right_on=['user'],
+            left_on=['user_id'],
+            right_on=['user_id'],
         )
         answers_with_skills = answers_with_skills[
             [self.scatter_x, self.scatter_y, self.scatter_c]]
@@ -704,7 +730,7 @@ class AnswersByUserHistogram(PlotCommand):
 
     def get_data(self):
         answers = load_data.get_answers(self.options)
-        grouped = answers.groupby(['user']).count()
+        grouped = answers.groupby(['user_id']).count()
         grouped = grouped.reset_index()
         grouped['log_10(count)'] = grouped['id'].map(lambda x: math.log(x, 10))
         grouped = grouped[['log_10(count)']]
@@ -715,7 +741,7 @@ class AnswerPlacesHistogram(PlotCommand):
     adjust_bottom = 0.2
 
     def get_data(self):
-        answers = load_data.get_answers_with_map(self.options)
+        answers = load_data.get_answers_with_flashcards(self.options)
         answers = answers[answers['map_name'] == 'Europe']
         answers = answers[answers['place_type'] == 1]
         grouped = answers.groupby(['place_name']).count()
@@ -729,10 +755,10 @@ class AnswerPlacesByUserHistogram(PlotCommand):
     adjust_bottom = 0.2
 
     def get_data(self):
-        answers = load_data.get_answers_with_map(self.options)
+        answers = load_data.get_answers_with_flashcards(self.options)
         answers = answers[answers['map_name'] == 'Europe']
         answers = answers[answers['place_type'] == 1]
-        grouped = answers.groupby(['place_name', 'user']).count()
+        grouped = answers.groupby(['place_name', 'user_id']).count()
         # grouped = grouped.reset_index()
         grouped = grouped.sort('id', ascending=False)
         grouped = grouped[['id']]
@@ -788,10 +814,10 @@ class ResponseTimeByPrevious(PlotCommand):
 class RatingByContextSize(PlotCommand):
     kind = 'area'
     stacked = True
-    adjust_right = 0.65
-    legend_bbox = (1.65, 0.9)
-    color = ['b', 'g', 'r']
-    ylim = [0, 4]
+    #legend_bbox = (1.65, 0.9)
+    adjust_bottom = 0.1
+    ylim = [0, 1]
+    legend_loc = 'center'
 
     def make_relative(self, grouped):
         value_columns = grouped.columns
@@ -819,14 +845,14 @@ class RatingByContextSize(PlotCommand):
                 values='inserted')
             grouped = self.make_relative(grouped)
             grouped.rename(columns=RATING_VALUES, inplace=True)
-            columns = [(AB_VALUES[i], j) for j in grouped.columns]
+            columns = [(AB_VALUES_SHORT[i], j) for j in grouped.columns]
             grouped.columns = pd.MultiIndex.from_tuples(columns)
             if res is None:
                 res = grouped
             else:
                 res = res.join(grouped, how='right', lsuffix='_x')
             res2.append(grouped)
-        return res
+        return res2
 
 
 class FirstAnswerUnanswered(InTimeCommand):
@@ -840,12 +866,12 @@ class FirstAnswerUnanswered(InTimeCommand):
         answers['is_not_answered'] = answers['item_answered_id'].map(lambda x: math.isnan(x))
         answers['is_first'] = answers['answer_order'].map(lambda x: x == 1)
         answers = self.add_week(answers, 'date')
-        answers = answers[['date', 'is_not_answered', 'guess']]
-        grouped = answers.groupby(['date', 'guess']).mean()
+        answers = answers[['date', 'is_not_answered', 'is_first']]
+        grouped = answers.groupby(['date', 'is_first']).mean()
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='date',
-            columns='guess',
+            columns='is_first',
             values='is_not_answered')
         return grouped
 
@@ -867,10 +893,12 @@ class SecondAnswer(PlotCommand):
         return grouped
 
 
-class SuccessByAnswerOrder(PlotCommand):
+class AnswerOrder(PlotCommand):
     kind = 'line'
     legend_loc = 'lower right'
+    marker = 'o'
 
+class SuccessByAnswerOrder(AnswerOrder):
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         answers = answers[answers['answer_order'] <= 60]
@@ -886,7 +914,59 @@ class SuccessByAnswerOrder(PlotCommand):
         return grouped
 
 
-class AnswerCountByOrder(PlotCommand):
+class LearningCurves(AnswerOrder):
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        answers = answers[answers['metainfo_id'] == 1]
+        answers = answers[answers['answer_order'].isin(range(1, 70, 10))]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        grouped = grouped[['correct']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='correct')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class SuccessByAnswerOrderOnContext(AnswerOrder):
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        grouped = grouped[['correct']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='correct')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class IsNotAnsweredByAnswerOrderOnContext(AnswerOrder):
+    legend_loc = 'upper right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        answers['is_not_answered'] = answers['item_answered_id'].map(lambda x: math.isnan(x))
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        grouped = grouped[['is_not_answered']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='is_not_answered')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class AnswerCountByOrder(AnswerOrder):
     kind = 'line'
     legend_loc = 'upper right'
 
@@ -912,6 +992,19 @@ class ResponseTimeByAnswerOrder(PlotCommand):
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order']).median()
+        grouped = grouped.reset_index()
+        grouped = grouped[['response_time']]
+        return grouped
+
+
+class ResponseTimeByAnswerOrderOnContext(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
         answers = answers[answers['answer_order'] <= 60]
         grouped = answers.groupby(['answer_order']).median()
         grouped = grouped.reset_index()
@@ -954,13 +1047,13 @@ class RatingOrderByValue(PlotCommand):
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
-        grouped = ratings.groupby(['value', 'order']).count()
-        grouped = grouped[['user']]
+        grouped = ratings.groupby(['value', 'rating_order']).count()
+        grouped = grouped[['user_id']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='value',
-            columns='order',
-            values='user')
+            columns='rating_order',
+            values='user_id')
         value_columns = grouped.columns
         grouped = grouped.fillna(0)
         grouped['All'] = 0
@@ -978,13 +1071,13 @@ class RatingByOrder(PlotCommand):
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
-        grouped = ratings.groupby(['value', 'order']).count()
-        grouped = grouped[['user']]
+        grouped = ratings.groupby(['value', 'rating_order']).count()
+        grouped = grouped[['user_id']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
-            index='order',
+            index='rating_order',
             columns='value',
-            values='user')
+            values='user_id')
         value_columns = grouped.columns
         grouped = grouped.fillna(0)
         grouped['All'] = 0
@@ -997,6 +1090,33 @@ class RatingByOrder(PlotCommand):
         return grouped
 
 
+class RatingByAb(PlotCommand):
+    stacked = True
+    legend_loc = 'center right'
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_maps(self.options)
+        grouped = ratings.groupby(['experiment_setup_id', 'value']).count()
+        grouped = grouped[['user_id']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='experiment_setup_id',
+            columns='value',
+            values='user_id')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(columns=RATING_VALUES, inplace=True)
+        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        grouped.sort_index(inplace=True)
+        return grouped
+
+
 class RatingByLastOrder(PlotCommand):
     stacked = True
     legend_loc = 'center right'
@@ -1004,12 +1124,12 @@ class RatingByLastOrder(PlotCommand):
     def get_data(self):
         ratings = load_data.get_rating(self.options)
         grouped = ratings.groupby(['value', 'last_order']).count()
-        grouped = grouped[['user']]
+        grouped = grouped[['user_id']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='last_order',
             columns='value',
-            values='user')
+            values='user_id')
         value_columns = grouped.columns
         grouped = grouped.fillna(0)
         grouped['All'] = 0
@@ -1036,7 +1156,7 @@ class RatingOrderHistogram(PlotCommand):
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
-        ratings = ratings[['order']]
+        ratings = ratings[['rating_order']]
         return ratings
 
 
@@ -1055,25 +1175,25 @@ class RatingByDivider(DivisionCommand):
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
-        ratings = ratings[['user', 'value']]
+        ratings = ratings[['user_id', 'value']]
         div = divider.Divider.get_divider(self.options)
         answers = load_data.get_answers(self.options)
         new_column_name = div.column_name
         answers = div.divide(answers, new_column_name)
-        users = answers.drop_duplicates(['user'])
+        users = answers.drop_duplicates(['user_id'])
         ratings = pd.merge(
             ratings,
             users,
-            left_on=['user'],
-            right_on=['user'],
+            left_on=['user_id'],
+            right_on=['user_id'],
         )
-        ratings = ratings[['value', new_column_name, 'user']]
+        ratings = ratings[['value', new_column_name, 'user_id']]
         grouped = ratings.groupby(['value', new_column_name]).count()
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index=new_column_name,
             columns='value',
-            values='user')
+            values='user_id')
         value_columns = grouped.columns
         grouped = grouped.fillna(0)
         grouped['All'] = 0
@@ -1089,6 +1209,7 @@ class RatingByDivider(DivisionCommand):
 class RatingByDividers(PlotCommand):
     stacked = True
     adjust_bottom = 0.2
+    legend_loc = 'center right'
 
     def get_data(self):
         self.options.divider = 'all'
@@ -1103,24 +1224,24 @@ class RatingByDividers(PlotCommand):
 
     def _get_data(self, div):
         ratings = load_data.get_rating(self.options)
-        ratings = ratings[['user', 'value']]
+        ratings = ratings[['user_id', 'value']]
         answers = load_data.get_answers(self.options)
         new_column_name = div.column_name
         answers = div.divide(answers, new_column_name)
-        users = answers.drop_duplicates(['user'])
+        users = answers.drop_duplicates(['user_id'])
         ratings = pd.merge(
             ratings,
             users,
-            left_on=['user'],
-            right_on=['user'],
+            left_on=['user_id'],
+            right_on=['user_id'],
         )
-        ratings = ratings[['value', new_column_name, 'user']]
+        ratings = ratings[['value', new_column_name, 'user_id']]
         grouped = ratings.groupby(['value', new_column_name]).count()
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index=new_column_name,
             columns='value',
-            values='user')
+            values='user_id')
         value_columns = grouped.columns
         grouped = grouped.fillna(0)
         grouped['All'] = 0
@@ -1204,11 +1325,11 @@ class FeedbackByType(PlotCommand):
         feedback = load_data.get_feedback_data_with_type()
         print len(feedback)
         grouped = feedback.groupby(['type']).count()
-        grouped = grouped[['inserted']]
-        grouped = grouped.sort('inserted', ascending=False)
+        grouped = grouped[['time']]
+        grouped = grouped.sort('time', ascending=False)
         """
         grouped = grouped.reset_index()
-        grouped['type'] = grouped['type'] + grouped['inserted'].apply(
+        grouped['type'] = grouped['type'] + grouped['time'].apply(
             lambda x: ' (' + str(x) + ')')
         grouped = grouped.set_index('type')
         """
