@@ -899,6 +899,7 @@ class AnswerOrder(PlotCommand):
     legend_loc = 'lower right'
     marker = 'o'
 
+
 class SuccessByAnswerOrder(AnswerOrder):
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
@@ -930,6 +931,45 @@ class LearningCurves(AnswerOrder):
         grouped.columns = [AB_VALUES[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
+
+
+class LearningCurvesByRating(AnswerOrder):
+    legend = False
+    ylim = [0.25, 1]
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings.groupby(['user_id']).mean()
+        ratings = ratings[['value']]
+        ratings = ratings.reset_index()
+
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        answers = pd.merge(
+            ratings,
+            answers,
+            on=['user_id'],
+        )
+
+        res = []
+        all_answers = answers
+        for i in range(0, 8):
+            answers = all_answers[all_answers['value'] == i / 2.0]
+            answers = answers[answers['metainfo_id'] == 1]
+            answers = answers[answers['answer_order'].isin(range(1, 50, 10))]
+            grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+            grouped = grouped[['correct']]
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='answer_order',
+                columns='experiment_setup_id',
+                values='correct')
+            grouped.columns = [AB_VALUES[j] for j in grouped.columns]
+            grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+            if len(grouped) > 0:
+                print i / 2.0, len(grouped)
+                res.append(grouped)
+        print len(res)
+        return res
 
 
 class SuccessByAnswerOrderOnContext(AnswerOrder):
