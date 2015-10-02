@@ -101,6 +101,8 @@ class PlotCommand(Command):
     legend = None
     color = None
     marker = None
+    subplot_x_dim = None
+    figsize = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -127,6 +129,7 @@ class PlotCommand(Command):
                 fontsize=self.fontsize,
                 legend=self.legend,
                 marker=self.marker,
+                figsize=self.figsize,
             )
             if self.color is not None:
                 plot_params.update(dict(
@@ -142,15 +145,20 @@ class PlotCommand(Command):
                 ))
 
             fig.subplots_adjust(bottom=self.adjust_bottom, right=self.adjust_right)
-            ax = fig.add_subplot(math.sqrt(len(data_list)),
-                                 math.ceil(math.sqrt(len(data_list))), i + 1)
+            if self.subplot_x_dim is not None:
+                ax = fig.add_subplot(math.ceil(len(data_list) / self.subplot_x_dim),
+                                     self.subplot_x_dim,
+                                     i + 1)
+            else:
+                ax = fig.add_subplot(round(math.sqrt(len(data_list))),
+                                     math.ceil(math.sqrt(len(data_list))), i + 1)
 
             if self.ylim is not None:
                 ax.set_ylim(self.ylim)
 
-            if len(data_list) > 1 and hasattr(data.columns, 'levels'):
+            if len(data_list) > 1:
                 plot_params.update(dict(
-                    title=data.columns.levels[0][0],
+                    title=data.columns.levels[0][0] if hasattr(data.columns, 'levels') else '',
                 ))
             plot_params.update(dict(
                 ax=ax,
@@ -198,7 +206,12 @@ class PlotCommand(Command):
                     self.options.term_type is not None else ''))
 
     def _execute(self):
-        data = self.get_data()
+        if self.options.use_cached_data:
+            data = pd.read_pickle(self.file_name().replace(
+                '.png', '.pdy').replace(
+                'plot', 'plot_data'))
+        else:
+            data = self.get_data()
         self.generate_graph(data)
 
     def get_week(self, datetime_string):
@@ -917,10 +930,11 @@ class SuccessByAnswerOrder(AnswerOrder):
 
 
 class LearningCurves(AnswerOrder):
-    def get_data(self):
-        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+    max_answer_order = 70
+
+    def get_curve_data(self, answers):
         answers = answers[answers['metainfo_id'] == 1]
-        answers = answers[answers['answer_order'].isin(range(1, 70, 10))]
+        answers = answers[answers['answer_order'].isin(range(1, self.max_answer_order, 10))]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
         grouped = grouped[['correct']]
         grouped = grouped.reset_index()
@@ -932,10 +946,16 @@ class LearningCurves(AnswerOrder):
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
 
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        curve_data = self.get_curve_data(answers)
+        return curve_data
 
-class LearningCurvesByRating(AnswerOrder):
+
+class LearningCurvesByRating(LearningCurves):
     legend = False
     ylim = [0.25, 1]
+    max_answer_order = 50
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
@@ -954,21 +974,41 @@ class LearningCurvesByRating(AnswerOrder):
         all_answers = answers
         for i in range(0, 8):
             answers = all_answers[all_answers['value'] == i / 2.0]
-            answers = answers[answers['metainfo_id'] == 1]
-            answers = answers[answers['answer_order'].isin(range(1, 50, 10))]
-            grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
-            grouped = grouped[['correct']]
-            grouped = grouped.reset_index()
-            grouped = grouped.pivot(
-                index='answer_order',
-                columns='experiment_setup_id',
-                values='correct')
-            grouped.columns = [AB_VALUES[j] for j in grouped.columns]
-            grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
-            if len(grouped) > 0:
-                print i / 2.0, len(grouped)
-                res.append(grouped)
+            curve_data = self.get_curve_data(answers)
+            if len(curve_data) > 0:
+                res.append(curve_data)
         print len(res)
+        return res
+
+
+class LearningCurvesByDivider(LearningCurves):
+    legend = False
+    ylim = [0.4, 0.8]
+    max_answer_order = 50
+    subplot_x_dim = 2
+    figsize = (9, 13)
+
+    def get_data(self):
+        res = []
+        self.options.divider = 'all'
+        divs = divider.Divider.get_divider(self.options)
+        all_answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+
+        for i in divs:
+            div = divs[i](self.options)
+            print div.column_name
+            new_column_name = div.column_name
+
+            answers = div.divide(all_answers, new_column_name)
+            true_answers = answers[answers[new_column_name]]
+            curve_data = self.get_curve_data(true_answers)
+            if len(curve_data) > 0:
+                res.append(curve_data)
+
+            false_answers = answers[~answers[new_column_name]]
+            curve_data = self.get_curve_data(false_answers)
+            if len(curve_data) > 0:
+                res.append(curve_data)
         return res
 
 
