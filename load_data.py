@@ -110,6 +110,7 @@ def get_answers(options, strip_times=False, strip_less_than_10=False):
     }
     answers = read_csv(options.answers, col_types)
     answers['correct'] = answers['item_id'] == answers['item_answered_id']
+    answers['metainfo_id'].fillna(0, inplace=True)
     if strip_times:
         answers = answers[answers['response_time'] > 0]
         answers = answers[answers['response_time'] < 30000]
@@ -151,7 +152,7 @@ def get_answers_with_ab(options, answers=None):
 
 def get_answers_with_map_grouped(options):
     answers_with_maps = get_answers_with_flashcards(options)
-    answers_with_maps = answers_with_maps.groupby(['map_name'])
+    answers_with_maps = answers_with_maps.groupby(['context_name'])
     return answers_with_maps
 
 

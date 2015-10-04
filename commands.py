@@ -8,6 +8,7 @@ import utils
 import datetime
 import math
 from scipy import stats
+from matplotlib.colors import LinearSegmentedColormap
 
 
 DATA_DIR = 'data/'
@@ -85,9 +86,11 @@ class PlotCommand(Command):
     kind = 'bar'
     subplots = False
     adjust_bottom = 0.1
+    adjust_hspace = None
     adjust_right = 0.95
     legend_alpha = False
     ylim = None
+    xlim = None
     legend_loc = None
     legend_bbox = None
     active = True
@@ -103,6 +106,8 @@ class PlotCommand(Command):
     marker = None
     subplot_x_dim = None
     figsize = None
+    colormap = None
+    edgecolor = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -110,16 +115,19 @@ class PlotCommand(Command):
 
     def generate_graph(self, data):
         if type(data) is not list:
-            data_list = [data]
+            data_list = [[data, None]]
         else:
             data_list = data
 
         fig = plt.gcf()
 
         for i in range(len(data_list)):
-            data = data_list[i]
+            data = data_list[i][0]
+            data_len = len(data)
             print len(data)
             print (data.head() if len(data) > 10 else data)
+            if i > 0:
+                self.legend = False
             plot_params = dict(
                 kind=self.kind,
                 subplots=self.subplots,
@@ -128,9 +136,14 @@ class PlotCommand(Command):
                 stacked=self.stacked,
                 fontsize=self.fontsize,
                 legend=self.legend,
-                marker=self.marker,
                 figsize=self.figsize,
+                colormap=self.colormap,
+                edgecolor=self.edgecolor,
             )
+            if self.marker is not None:
+                plot_params.update(dict(
+                    marker=self.marker,
+                ))
             if self.color is not None:
                 plot_params.update(dict(
                     color=self.color,
@@ -144,7 +157,10 @@ class PlotCommand(Command):
                     # marker='+',
                 ))
 
-            fig.subplots_adjust(bottom=self.adjust_bottom, right=self.adjust_right)
+            fig.subplots_adjust(
+                bottom=self.adjust_bottom,
+                hspace=self.adjust_hspace,
+                right=self.adjust_right)
             if self.subplot_x_dim is not None:
                 ax = fig.add_subplot(math.ceil(len(data_list) / self.subplot_x_dim),
                                      self.subplot_x_dim,
@@ -156,9 +172,12 @@ class PlotCommand(Command):
             if self.ylim is not None:
                 ax.set_ylim(self.ylim)
 
-            if len(data_list) > 1:
+            if self.xlim is not None:
+                ax.set_xlim(self.xlim)
+
+            if data_len > 1:
                 plot_params.update(dict(
-                    title=data.columns.levels[0][0] if hasattr(data.columns, 'levels') else '',
+                    title=data.columns.levels[0][0] if hasattr(data.columns, 'levels') else data_list[i][1],
                 ))
             plot_params.update(dict(
                 ax=ax,
@@ -336,8 +355,8 @@ class FilterEuropeStates(PlotCommand):
 
     def get_data(self):
         maps = load_data.get_maps(self.options)
-        maps = maps[maps.place_type == '1']
-        maps = maps[maps.map_name == 'Europe']
+        maps = maps[maps.term_type == '1']
+        maps = maps[maps.context_name == 'Europe']
         answers = load_data.get_answers(self.options)
         print len(answers)
         answers = answers[answers.place_asked.isin(maps.place)]
@@ -351,7 +370,7 @@ class PlacesByMap(PlotCommand):
 
     def get_data(self):
         maps = load_data.get_maps(self.options)
-        maps = maps.groupby(['map_name']).count()
+        maps = maps.groupby(['context_name']).count()
         maps = maps[['place']]
         maps = maps.sort('place', ascending=False)
         maps.columns = ['Number Of Places']
@@ -363,12 +382,12 @@ class PlacesByMapAndType(PlotCommand):
 
     def get_data(self):
         maps = load_data.get_maps(self.options)
-        maps = maps.groupby(['map_name', 'place_type']).count()
-        maps = maps.drop(['map_name', 'place_type', 'map', 'place_name'], 1)
+        maps = maps.groupby(['context_name', 'term_type']).count()
+        maps = maps.drop(['context_name', 'term_type', 'map', 'place_name'], 1)
         maps = maps.reset_index()
         maps = maps.pivot(
-            index='map_name',
-            columns='place_type',
+            index='context_name',
+            columns='term_type',
             values='place')
         # print maps
         maps = maps[['1', '2', '5', '6', '13', '14']]
@@ -426,14 +445,14 @@ class AnswersByMap(DivisionCommand):
         div = divider.Divider.get_divider(self.options)
         new_column_name = div.column_name
         answers_with_maps = div.divide(answers_with_maps, new_column_name)
-        answers_with_maps = answers_with_maps.groupby(['map_name', new_column_name])
+        answers_with_maps = answers_with_maps.groupby(['context_name', new_column_name])
         answers_by_map = answers_with_maps.count()
-        answers_by_map = answers_by_map[['place']]
+        answers_by_map = answers_by_map[['context_id']]
         answers_by_map = answers_by_map.reset_index()
         answers_by_map = answers_by_map.pivot(
-            index='map_name',
+            index='context_name',
             columns=new_column_name,
-            values='place')
+            values='context_id')
         answers_by_map[False] = answers_by_map[False] / answers_by_map[False].sum()
         answers_by_map[True] = answers_by_map[True] / answers_by_map[True].sum()
         answers_by_map['Diff'] = answers_by_map[True] - answers_by_map[False]
@@ -520,7 +539,7 @@ class AnswersByMapInTime(InTimeCommand):
     result_columns = [
         'World', 'Europe', 'Africa', 'Asia', 'North America',
         'South America', 'Czech Rep.', 'United States']
-    groupby_column = 'map_name'
+    groupby_column = 'context_name'
     date_precision = 'week'
 
 
@@ -584,7 +603,7 @@ class UsersInDayByMinuteAbsolute(AnswersInDayAbsolute):
 
 
 class AnswersInTimeAbsolute(AnswersByLangInTime):
-    result_columns = ['0']
+    result_columns = None
     columns_rename = {'0': 'Number of answers'}
     legend_loc = 'lower right'
     date_precision = 7
@@ -599,7 +618,7 @@ class UsersInTimeAbsolute(AnswersInTimeAbsolute):
 
 class AnswersByPlaceTypeInTime(InTimeCommand):
     legend_loc = 'lower left'
-    groupby_column = 'place_type'
+    groupby_column = 'term_type'
     columns_rename = PLACE_TYPES
     result_columns = [1, 2, 5, 7, 13, 14]
     date_precision = 'week'
@@ -607,7 +626,7 @@ class AnswersByPlaceTypeInTime(InTimeCommand):
 
 class AnswersByNumberOfOptionsInTime(InTimeCommand):
     legend_loc = 'lower right'
-    groupby_column = 'number_of_options'
+    groupby_column = 'guess'
 
 
 class CorrectRateInTime(InTimeCommand):
@@ -756,8 +775,8 @@ class AnswerPlacesHistogram(PlotCommand):
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards(self.options)
-        answers = answers[answers['map_name'] == 'Europe']
-        answers = answers[answers['place_type'] == 1]
+        answers = answers[answers['context_name'] == 'Europe']
+        answers = answers[answers['term_type'] == 1]
         grouped = answers.groupby(['place_name']).count()
         # grouped = grouped.reset_index()
         grouped = grouped.sort('id', ascending=False)
@@ -770,8 +789,8 @@ class AnswerPlacesByUserHistogram(PlotCommand):
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards(self.options)
-        answers = answers[answers['map_name'] == 'Europe']
-        answers = answers[answers['place_type'] == 1]
+        answers = answers[answers['context_name'] == 'Europe']
+        answers = answers[answers['term_type'] == 1]
         grouped = answers.groupby(['place_name', 'user_id']).count()
         # grouped = grouped.reset_index()
         grouped = grouped.sort('id', ascending=False)
@@ -910,7 +929,6 @@ class SecondAnswer(PlotCommand):
 class AnswerOrder(PlotCommand):
     kind = 'line'
     legend_loc = 'lower right'
-    marker = 'o'
 
 
 class SuccessByAnswerOrder(AnswerOrder):
@@ -924,6 +942,43 @@ class SuccessByAnswerOrder(AnswerOrder):
             index='answer_order',
             columns='experiment_setup_id',
             values='correct')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class GuessByAnswerOrder(AnswerOrder):
+    marker = None
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        grouped = grouped[['guess']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='guess')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
+class UnansweredByAb(AnswerOrder):
+    legend_loc = 'upper right'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers['is_not_answered'] = answers['item_answered_id'].map(lambda x: math.isnan(x))
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        answers = answers[['is_not_answered']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='is_not_answered')
         grouped.columns = [AB_VALUES[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
@@ -1053,7 +1108,6 @@ class AnswerCountByOrder(AnswerOrder):
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
-        answers = answers[answers['metainfo_id'] == 1]
         answers = answers[answers['answer_order'] <= 60]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).count()
         grouped = grouped[['correct']]
@@ -1066,6 +1120,114 @@ class AnswerCountByOrder(AnswerOrder):
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
 
+
+class AnswerCountDiffByOrder(AnswerOrder):
+    kind = 'line'
+    legend_loc = 'upper right'
+    marker = 'o'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers[answers['answer_order'] <= 100]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).count()
+        grouped = grouped[['correct']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='correct')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        for c in grouped.columns:
+            grouped[c] = 1 - grouped[c] * 1.0 / grouped[c].shift(1)
+        return grouped
+
+
+class UserCurve(PlotCommand):
+    legend_loc = 'upper right'
+    kind = 'line'
+    legend_alpha = True
+    figsize = (20, 15)
+    subplot_x_dim = 6
+    adjust_bottom = 0
+    adjust_hspace = 0.4
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+
+        grouped = answers.groupby('user_id').count()
+        grouped = grouped.reset_index()
+        more60 = grouped[grouped['time'] >= 60]['user_id']
+        answers = answers[answers['user_id'].isin(more60)]
+        users = []
+        for i in AB_VALUES:
+            answers_ab = answers[answers['experiment_setup_id'] == i]
+            users = users + answers_ab['user_id'].unique()[:self.subplot_x_dim * 2].tolist()
+        all_answers = answers
+        data = []
+        for user in users:
+            answers = all_answers[all_answers['user_id'] == user]
+            answers = answers[answers['answer_order'] <= 60]
+            answers.set_index('answer_order', inplace=True)
+            answers['context_change'] = answers['context_id'] != answers['context_id'].shift(1)
+            answers['session_start'] = answers['session_id'] != answers['session_id'].shift(1)
+            answers['response_time_log10'] = answers['response_time'].apply(lambda x: math.log(x, 10))
+            answers['rolling_success'] = sum([answers['correct'].shift(i) for i in range(10)]) / 10.0
+            answers = answers[[
+                # 'correct',
+                'rolling_success',
+                'guess',
+                # 'metainfo_id',
+                # 'response_time_log10',
+                'context_change',
+                'session_start',
+            ]]
+            data.append([answers, 'User: ' + str(user)])
+        return data
+
+
+class UsageScatter(PlotCommand):
+    kind = 'scatter'
+    scatter_x = 'answer_order'
+    scatter_y = 'user'
+    scatter_c = 'correct - guess'
+    legend_loc = 'upper right'
+    legend_alpha = True
+    figsize = (20, 15)
+    min_answer_count = 1
+    colormap = LinearSegmentedColormap.from_list('my', ['red', 'orange', 'green'])
+    edgecolor = 'none'
+    marker = '.'
+    xlim = [0, 161]
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+
+        grouped = answers.groupby('user_id').count()
+        grouped = grouped.reset_index()
+        more60 = grouped[grouped['time'] >= self.min_answer_count]['user_id']
+        answers = answers[answers['user_id'].isin(more60)]
+        # answers = answers[answers['metainfo_id'] != 1]
+        all_answers = answers
+        data = []
+        for i in AB_VALUES:
+            answers_ab = all_answers[all_answers['experiment_setup_id'] == i]
+            users = answers_ab['user_id'].unique()[:80].tolist()
+            users_dict = dict([(users[j], j) for j in range(len(users))])
+            answers = answers_ab[answers_ab['user_id'].isin(users)]
+            answers[self.scatter_y] = answers['user_id'].apply(lambda x: users_dict[x])
+            answers = answers[answers['answer_order'] < self.xlim[1]]
+            answers['context_change'] = answers['context_id'] != answers['context_id'].shift(1)
+            answers['session_start'] = answers['session_id'] != answers['session_id'].shift(1)
+            #  answers = answers[~answers['session_start']]
+            answers[self.scatter_c] = (answers['correct'] + 0 - answers['guess']).apply(lambda x: max(0, x))
+            answers = answers[[
+                self.scatter_x,
+                self.scatter_y,
+                self.scatter_c,
+            ]]
+            data.append([answers, AB_VALUES[i]])
+        return data
 
 class ResponseTimeByAnswerOrder(PlotCommand):
     kind = 'line'
