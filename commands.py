@@ -9,6 +9,7 @@ import datetime
 import math
 from scipy import stats
 from matplotlib.colors import LinearSegmentedColormap
+import random
 
 
 DATA_DIR = 'data/'
@@ -138,8 +139,11 @@ class PlotCommand(Command):
                 legend=self.legend,
                 figsize=self.figsize,
                 colormap=self.colormap,
-                edgecolor=self.edgecolor,
             )
+            if self.edgecolor is not None:
+                plot_params.update(dict(
+                    edgecolor=self.edgecolor,
+                ))
             if self.marker is not None:
                 plot_params.update(dict(
                     marker=self.marker,
@@ -1191,36 +1195,38 @@ class UsageScatter(PlotCommand):
     scatter_x = 'answer_order'
     scatter_y = 'user'
     scatter_c = 'correct - guess'
-    legend_loc = 'upper right'
-    legend_alpha = True
-    figsize = (20, 15)
-    min_answer_count = 1
+    figsize = (20, 30)
     colormap = LinearSegmentedColormap.from_list('my', ['red', 'orange', 'green'])
     edgecolor = 'none'
     marker = '.'
-    xlim = [0, 161]
+    xlim = [0, 201]
+    ylim = [0, 401]
+    random_users = False
+    sort_by_length = False
+
+    def edit_answers(self, answers):
+        answers['correct - guess'] = (answers['correct'] + 0 - answers['guess']).apply(lambda x: max(0, x))
+        return answers
 
     def get_data(self):
-        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
-
-        grouped = answers.groupby('user_id').count()
-        grouped = grouped.reset_index()
-        more60 = grouped[grouped['time'] >= self.min_answer_count]['user_id']
-        answers = answers[answers['user_id'].isin(more60)]
-        # answers = answers[answers['metainfo_id'] != 1]
-        all_answers = answers
+        all_answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         data = []
         for i in AB_VALUES:
             answers_ab = all_answers[all_answers['experiment_setup_id'] == i]
-            users = answers_ab['user_id'].unique()[:80].tolist()
-            users_dict = dict([(users[j], j) for j in range(len(users))])
+            if self.random_users:
+                users = random.sample(answers_ab['user_id'].unique(), self.ylim[1])
+            else:
+                users = answers_ab['user_id'].unique()[:self.ylim[1]].tolist()
             answers = answers_ab[answers_ab['user_id'].isin(users)]
+            if self.sort_by_length:
+                users_dict = dict(zip(zip(*sorted(answers.groupby(['user_id']).apply(len).to_dict().items(), key=lambda x: x[1]))[0], range(len(users))))
+            else:
+                users_dict = dict([(users[j], j) for j in range(len(users))])
+            # print AB_VALUES[i], users_dict
             answers[self.scatter_y] = answers['user_id'].apply(lambda x: users_dict[x])
             answers = answers[answers['answer_order'] < self.xlim[1]]
             answers['context_change'] = answers['context_id'] != answers['context_id'].shift(1)
-            answers['session_start'] = answers['session_id'] != answers['session_id'].shift(1)
-            #  answers = answers[~answers['session_start']]
-            answers[self.scatter_c] = (answers['correct'] + 0 - answers['guess']).apply(lambda x: max(0, x))
+            answers = self.edit_answers(answers)
             answers = answers[[
                 self.scatter_x,
                 self.scatter_y,
@@ -1228,6 +1234,35 @@ class UsageScatter(PlotCommand):
             ]]
             data.append([answers, AB_VALUES[i]])
         return data
+
+
+class UsageScatterSorted(UsageScatter):
+    random_users = True
+    sort_by_length = True
+
+
+class UsageScatterResponseTime(UsageScatterSorted):
+    scatter_c = 'response_time_log10'
+    colormap = LinearSegmentedColormap.from_list('black', ['white', 'black'])
+
+    def edit_answers(self, answers):
+        answers['response_time_log10'] = answers['response_time'].apply(lambda x: math.log(min(x, 30000), 10))
+        return answers
+
+
+class UsageScatterMetainfo(UsageScatterSorted):
+    scatter_c = 'metainfo_id'
+    colormap = LinearSegmentedColormap.from_list('black', ['#cccccc', 'black'])
+
+
+class UsageScatterSessionStart(UsageScatterSorted):
+    scatter_c = 'session_start'
+    colormap = LinearSegmentedColormap.from_list('black', ['#cccccc', 'black'])
+
+    def edit_answers(self, answers):
+        answers['session_start'] = answers['session_id'] != answers['session_id'].shift(1)
+        return answers
+
 
 class ResponseTimeByAnswerOrder(PlotCommand):
     kind = 'line'
