@@ -1016,6 +1016,46 @@ class LearningCurves(AnswerOrder):
         return curve_data
 
 
+class LearningCurvesWithTotalCount(AnswerOrder):
+    max_answer_order = 190
+    legend_alpha = True
+    marker = 'o'
+    subplots_adjust = dict(
+        wspace=0.7,
+        hspace=0.7,
+    )
+    ylim = [0.35, 0.8]
+
+    def get_curve_data(self, answers):
+        answers = answers[answers['metainfo_id'] == 1]
+        answers = answers[answers['answer_order'].isin(range(1, self.max_answer_order, 10))]
+        data = []
+        for i in range(1, 10):
+            filtered = answers.groupby('user_id').count()['id'].reset_index()
+            filtered = filtered[filtered['id'] == i]
+            users = filtered['user_id'].tolist()
+
+            filtered = answers[answers['user_id'].isin(users)]
+            filtered = filtered[filtered['answer_order'] <= i * 10]
+            grouped = filtered.groupby(['answer_order', 'experiment_setup_id']).mean()
+
+            grouped = grouped[['correct']]
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='answer_order',
+                columns='experiment_setup_id',
+                values='correct')
+            grouped.columns = [AB_VALUES[j] for j in grouped.columns]
+            grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+            data.append([grouped, str(i) + ' user_count ' + str(len(users))])
+        return data
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        curve_data = self.get_curve_data(answers)
+        return curve_data
+
+
 class LearningCurvesByRating(LearningCurves):
     legend = False
     ylim = [0.25, 1]
