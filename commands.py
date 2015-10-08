@@ -106,10 +106,11 @@ class PlotCommand(Command):
     color = None
     marker = None
     subplot_x_dim = None
-    figsize = None
+    figsize = (8, 6)
     colormap = None
     edgecolor = None
     subplots_adjust = None
+    subplots_first = 1
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -173,10 +174,10 @@ class PlotCommand(Command):
             if self.subplot_x_dim is not None:
                 ax = fig.add_subplot(math.ceil(len(data_list) / self.subplot_x_dim),
                                      self.subplot_x_dim,
-                                     i + 1)
+                                     i + self.subplots_first)
             else:
                 ax = fig.add_subplot(round(math.sqrt(len(data_list))),
-                                     math.ceil(math.sqrt(len(data_list))), i + 1)
+                                     math.ceil(math.sqrt(len(data_list))), i + self.subplots_first)
 
             if self.ylim is not None:
                 ax.set_ylim(self.ylim)
@@ -856,10 +857,13 @@ class ResponseTimeByPrevious(PlotCommand):
 class RatingByContextSize(PlotCommand):
     kind = 'area'
     stacked = True
-    #legend_bbox = (1.65, 0.9)
     adjust_bottom = 0.1
     ylim = [0, 1]
     legend_loc = 'center'
+    subplots_adjust = dict(
+        hspace=0.4,
+    )
+    legend_alpha=True
 
     def make_relative(self, grouped):
         value_columns = grouped.columns
@@ -887,13 +891,11 @@ class RatingByContextSize(PlotCommand):
                 values='inserted')
             grouped = self.make_relative(grouped)
             grouped.rename(columns=RATING_VALUES, inplace=True)
-            columns = [(AB_VALUES_SHORT[i], j) for j in grouped.columns]
-            grouped.columns = pd.MultiIndex.from_tuples(columns)
             if res is None:
                 res = grouped
             else:
                 res = res.join(grouped, how='right', lsuffix='_x')
-            res2.append(grouped)
+            res2.append([grouped, AB_VALUES[i]])
         return res2
 
 
@@ -1019,6 +1021,9 @@ class LearningCurves(AnswerOrder):
 class LearningCurvesWithTotalCount(AnswerOrder):
     max_answer_order = 190
     legend_alpha = True
+    legend_loc = None
+    legend_bbox = (-0.2, 1.2)
+    subplots_first = 2
     marker = 'o'
     subplots_adjust = dict(
         wspace=0.7,
@@ -1030,7 +1035,7 @@ class LearningCurvesWithTotalCount(AnswerOrder):
         answers = answers[answers['metainfo_id'] == 1]
         answers = answers[answers['answer_order'].isin(range(1, self.max_answer_order, 10))]
         data = []
-        for i in range(1, 10):
+        for i in range(1, 9):
             filtered = answers.groupby('user_id').count()['id'].reset_index()
             filtered = filtered[filtered['id'] == i]
             users = filtered['user_id'].tolist()
@@ -1047,7 +1052,7 @@ class LearningCurvesWithTotalCount(AnswerOrder):
                 values='correct')
             grouped.columns = [AB_VALUES[j] for j in grouped.columns]
             grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
-            data.append([grouped, str(i) + ' user_count ' + str(len(users))])
+            data.append([grouped, str(i) + '; user_count: ' + str(len(users))])
         return data
 
     def get_data(self):
