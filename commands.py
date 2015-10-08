@@ -109,10 +109,47 @@ class PlotCommand(Command):
     figsize = None
     colormap = None
     edgecolor = None
+    subplots_adjust = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
         self.show_plots = show_plots
+
+    def get_plot_params(self, subplot_index):
+        if subplot_index > 0:
+            self.legend = False
+        plot_params = dict(
+            kind=self.kind,
+            subplots=self.subplots,
+            title=self.plot_name() if not self.options.production else '',
+            rot=self.rot,
+            stacked=self.stacked,
+            fontsize=self.fontsize,
+            legend=self.legend,
+            figsize=self.figsize,
+            colormap=self.colormap,
+        )
+        if self.edgecolor is not None:
+            plot_params.update(dict(
+                edgecolor=self.edgecolor,
+            ))
+        if self.marker is not None:
+            plot_params.update(dict(
+                marker=self.marker,
+            ))
+        if self.color is not None:
+            plot_params.update(dict(
+                color=self.color,
+            ))
+        if self.scatter_c is not None:
+            plot_params.update(dict(
+                x=self.scatter_x,
+                y=self.scatter_y,
+                c=self.scatter_c,
+                # s=20,
+                # marker='+',
+            ))
+        return plot_params
 
     def generate_graph(self, data):
         if type(data) is not list:
@@ -124,43 +161,9 @@ class PlotCommand(Command):
 
         for i in range(len(data_list)):
             data = data_list[i][0]
-            data_len = len(data)
             print len(data)
             print (data.head() if len(data) > 10 else data)
-            if i > 0:
-                self.legend = False
-            plot_params = dict(
-                kind=self.kind,
-                subplots=self.subplots,
-                title=self.plot_name() if not self.options.production else '',
-                rot=self.rot,
-                stacked=self.stacked,
-                fontsize=self.fontsize,
-                legend=self.legend,
-                figsize=self.figsize,
-                colormap=self.colormap,
-            )
-            if self.edgecolor is not None:
-                plot_params.update(dict(
-                    edgecolor=self.edgecolor,
-                ))
-            if self.marker is not None:
-                plot_params.update(dict(
-                    marker=self.marker,
-                ))
-            if self.color is not None:
-                plot_params.update(dict(
-                    color=self.color,
-                ))
-            if self.scatter_c is not None:
-                plot_params.update(dict(
-                    x=self.scatter_x,
-                    y=self.scatter_y,
-                    c=self.scatter_c,
-                    # s=20,
-                    # marker='+',
-                ))
-
+            plot_params = self.get_plot_params(i)
             if self.subplots_adjust is None:
                 self.subplots_adjust = dict(
                     bottom=self.adjust_bottom,
@@ -181,7 +184,7 @@ class PlotCommand(Command):
             if self.xlim is not None:
                 ax.set_xlim(self.xlim)
 
-            if data_len > 1:
+            if len(data_list) > 1:
                 plot_params.update(dict(
                     title=data.columns.levels[0][0] if hasattr(data.columns, 'levels') else data_list[i][1],
                 ))
@@ -697,8 +700,8 @@ class ResponseTimeByDivider(Command):
         answers = div.divide(answers, new_column_name)
         answers['response_time'] = answers['response_time'].apply(
             lambda x: math.log(x, 2))
-        cat1 = answers[answers[div.column_name] == True]['response_time']
-        cat2 = answers[answers[div.column_name] == False]['response_time']
+        cat1 = answers[answers[div.column_name]]['response_time']
+        cat2 = answers[~answers[div.column_name]]['response_time']
         print cat1.describe()
         print cat2.describe()
         print stats.ranksums(cat1, cat2)
