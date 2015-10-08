@@ -161,10 +161,12 @@ class PlotCommand(Command):
                     # marker='+',
                 ))
 
-            fig.subplots_adjust(
-                bottom=self.adjust_bottom,
-                hspace=self.adjust_hspace,
-                right=self.adjust_right)
+            if self.subplots_adjust is None:
+                self.subplots_adjust = dict(
+                    bottom=self.adjust_bottom,
+                    hspace=self.adjust_hspace,
+                    right=self.adjust_right)
+            fig.subplots_adjust(**self.subplots_adjust)
             if self.subplot_x_dim is not None:
                 ax = fig.add_subplot(math.ceil(len(data_list) / self.subplot_x_dim),
                                      self.subplot_x_dim,
@@ -1203,6 +1205,14 @@ class UsageScatter(PlotCommand):
     ylim = [0, 401]
     random_users = False
     sort_by_length = False
+    subplots_adjust = dict(
+        hspace=0.05,
+        wspace=0.1,
+        top=0.95,
+        bottom=0.05,
+        right=0.95,
+        left=0.05,
+    )
 
     def edit_answers(self, answers):
         answers['correct - guess'] = (answers['correct'] + 0 - answers['guess']).apply(lambda x: max(0, x))
@@ -1255,6 +1265,11 @@ class UsageScatterMetainfo(UsageScatterSorted):
     colormap = LinearSegmentedColormap.from_list('black', ['#cccccc', 'black'])
 
 
+class UsageScatterGuess(UsageScatterSorted):
+    scatter_c = 'guess'
+    colormap = LinearSegmentedColormap.from_list('black', ['#cccccc', 'black'])
+
+
 class UsageScatterSessionStart(UsageScatterSorted):
     scatter_c = 'session_start'
     colormap = LinearSegmentedColormap.from_list('black', ['#cccccc', 'black'])
@@ -1262,6 +1277,12 @@ class UsageScatterSessionStart(UsageScatterSorted):
     def edit_answers(self, answers):
         answers['session_start'] = answers['session_id'] != answers['session_id'].shift(1)
         return answers
+
+
+class UsageScatterContext(UsageScatter):
+    random_users = True
+    scatter_c = 'context_id'
+    colormap = 'Set1'
 
 
 class ResponseTimeByAnswerOrder(PlotCommand):
