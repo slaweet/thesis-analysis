@@ -9,7 +9,7 @@
 .sass-cache
 .settings
 *.log
-.django_cache
+.cache
 .ropeproject
 node_modules
 data/

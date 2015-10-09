@@ -50,6 +50,10 @@ def main():
     p.add_option("-u", "--use_cached_data", action="store_true",
                  dest="use_cached_data", default=None,
                  help="use data from last run of this command")
+
+    p.add_option("-n", "--no_cache", action="store_true",
+                 dest="no_cache", default=None,
+                 help="don't use data cached by functions in load_data.py")
     options, arguments = p.parse_args()
 
     possible_commands = dict([
