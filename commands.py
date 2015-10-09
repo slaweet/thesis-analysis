@@ -1030,7 +1030,8 @@ class LearningCurvesWithTotalCount(AnswerOrder):
         wspace=0.7,
         hspace=0.7,
     )
-    ylim = [0.35, 0.8]
+    ylim = [0.35, 0.9]
+    cumulative = False
 
     def get_curve_data(self, answers):
         answers = answers[answers['metainfo_id'] == 1]
@@ -1038,7 +1039,10 @@ class LearningCurvesWithTotalCount(AnswerOrder):
         data = []
         for i in range(1, 9):
             filtered = answers.groupby('user_id').count()['id'].reset_index()
-            filtered = filtered[filtered['id'] == i]
+            if self.cumulative:
+                filtered = filtered[filtered['id'] >= i]
+            else:
+                filtered = filtered[filtered['id'] == i]
             users = filtered['user_id'].tolist()
 
             filtered = answers[answers['user_id'].isin(users)]
@@ -1060,6 +1064,10 @@ class LearningCurvesWithTotalCount(AnswerOrder):
         answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
         curve_data = self.get_curve_data(answers)
         return curve_data
+
+
+class LearningCurvesWithTotalCountCumulative(LearningCurvesWithTotalCount):
+    cumulative = True
 
 
 class LearningCurvesByRating(LearningCurves):
