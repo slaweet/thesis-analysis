@@ -1701,3 +1701,37 @@ class FeedbackWordCountHistogram(PlotCommand):
         feedback['log_10(word_count)'] = feedback['word_count'].map(lambda x: math.log(x, 10))
         feedback = feedback[['log_10(word_count)']]
         return feedback
+
+
+class AnswerCountByUserAb(PlotCommand):
+
+    def get_data(self):
+        answers = load_data.get_answers(self.options)
+        grouped = answers.groupby(['user_id', 'experiment_setup_id']).count()
+        grouped = grouped[['id']]
+        grouped.columns = ['answer_count']
+        grouped = grouped.reset_index()
+        grouped = grouped.groupby(['experiment_setup_id']).mean()
+        grouped = grouped[['answer_count']]
+        grouped = grouped.reset_index()
+        grouped = grouped.set_index('experiment_setup_id')
+        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        grouped.sort_index(inplace=True)
+        return grouped
+
+
+class AnswerCountBySessionAb(PlotCommand):
+
+    def get_data(self):
+        answers = load_data.get_answers(self.options)
+        grouped = answers.groupby(['session_id', 'experiment_setup_id']).count()
+        grouped = grouped[['id']]
+        grouped.columns = ['answer_count']
+        grouped = grouped.reset_index()
+        grouped = grouped.groupby(['experiment_setup_id']).mean()
+        grouped = grouped[['answer_count']]
+        grouped = grouped.reset_index()
+        grouped = grouped.set_index('experiment_setup_id')
+        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        grouped.sort_index(inplace=True)
+        return grouped
