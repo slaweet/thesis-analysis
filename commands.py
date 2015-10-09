@@ -364,13 +364,14 @@ class FilterEuropeStates(PlotCommand):
     active = False
 
     def get_data(self):
-        maps = load_data.get_maps(self.options)
-        maps = maps[maps.term_type == '1']
-        maps = maps[maps.context_name == 'Europe']
-        answers = load_data.get_answers(self.options)
+        answers = load_data.get_answers_with_flashcards(self.options)
         print len(answers)
-        answers = answers[answers.place_asked.isin(maps.place)]
+        answers = answers[answers.context_name == 'Europe']
+        answers = answers[answers.term_type == 'state']
         print len(answers)
+        answers_only = load_data.get_answers(self.options)
+        print answers.columns, answers_only.columns
+        answers = answers[answers_only.columns]
         answers.to_csv('data/answers-europe.csv', sep=',', encoding='utf-8')
         return answers
 
