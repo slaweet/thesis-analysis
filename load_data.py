@@ -10,6 +10,22 @@ import bisect
 RATING_INTERVALS = [30, 70, 120, 200]
 
 
+def get_cached(fn):
+    directory = '.cache'
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    def func_wrapper(options):
+        file_name = directory + '/' + fn.__name__ + options.answers.replace('/', '_') + '.pdy'
+        if os.path.isfile(file_name) and not options.no_cache:
+            data = pd.read_pickle(file_name)
+        else:
+            data = fn(options)
+            data.to_pickle(file_name)
+        return data
+    return func_wrapper
+
+
 def get_mnemonics(options):
     data_file = 'mnemonics_cs.csv'
     data_file = os.path.join(options.data_dir, data_file)
@@ -43,6 +59,7 @@ def get_rating(options):
     return ratings
 
 
+@get_cached
 def get_answers_with_flashcards_and_orders(options):
     answers_with_flashcards = get_answers_with_flashcards(options)
     answers_with_flashcards = answers_with_flashcards.sort(
@@ -61,24 +78,8 @@ def get_answers_with_flashcards_and_orders(options):
     return answers_with_flashcards
 
 
-def get_cached(fn, options):
-    directory = '.cache'
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    file_name = directory + '/' + fn.__name__ + options.answers.replace('/', '_') + '.pdy'
-    if os.path.isfile(file_name) and not options.no_cache:
-        data = pd.read_pickle(file_name)
-    else:
-        data = fn(options)
-        data.to_pickle(file_name)
-    return data
-
-
+@get_cached
 def get_answers_with_flashcards_and_context_orders(options):
-    return get_cached(_get_answers_with_flashcards_and_context_orders, options)
-
-
-def _get_answers_with_flashcards_and_context_orders(options):
     answers_with_flashcards = get_answers_with_flashcards(options)
     answers_with_flashcards = answers_with_flashcards.sort(
         ['user_id', 'context_id', 'time'], ascending=True)
