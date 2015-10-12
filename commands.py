@@ -212,7 +212,7 @@ class PlotCommand(Command):
         plt.savefig(self.file_name())
         if self.options.production:
             plt.savefig(self.file_name().replace('.png', '.svg'))
-        if self.show_plots:
+        if self.show_plots and not self.options.hide_plots:
             plt.show()
         plt.clf()
 

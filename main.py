@@ -54,6 +54,11 @@ def main():
     p.add_option("-n", "--no_cache", action="store_true",
                  dest="no_cache", default=None,
                  help="don't use data cached by functions in load_data.py")
+
+    p.add_option("-e", "--hide_plots", action="store_true",
+                 dest="hide_plots", default=False,
+                 help="don't show generated plot, just save it")
+
     options, arguments = p.parse_args()
 
     possible_commands = dict([
