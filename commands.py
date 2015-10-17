@@ -10,6 +10,13 @@ import math
 from scipy import stats
 from matplotlib.colors import LinearSegmentedColormap
 import random
+import bisect
+import seaborn as sns
+
+
+sns.set_style("whitegrid", {
+    'legend.frameon': True,
+})
 
 
 DATA_DIR = 'data/'
@@ -101,7 +108,7 @@ class PlotCommand(Command):
     scatter_x = None
     scatter_y = None
     scatter_c = None
-    fontsize = None
+    fontsize = 15
     legend = None
     color = None
     marker = None
@@ -201,7 +208,7 @@ class PlotCommand(Command):
             if self.legend is False:
                 pass
             elif self.legend_loc is not None:
-                legend = ax.legend(loc=self.legend_loc)
+                legend = ax.legend(loc=self.legend_loc, fontsize=self.fontsize)
             elif self.legend_bbox is not None:
                 legend = ax.legend(bbox_to_anchor=self.legend_bbox)
             else:
@@ -810,16 +817,34 @@ class AnswerPlacesByUserHistogram(PlotCommand):
 
 
 class RatingByMap(PlotCommand):
-    adjust_bottom = 0.3
+    adjust_bottom = 0.5
+    ylim = [0, 1]
+
+    def make_relative(self, grouped):
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        return grouped
 
     def get_data(self):
         ratings = load_data.get_rating_with_maps(self.options)
-        ratings = ratings[['context_name', 'term_type',  'context_item_count', 'correct']]
-        ratings = ratings.groupby(['context_name', 'term_type']).agg(['mean', 'count'])
-        ratings = ratings.sort(('context_item_count', 'mean'), ascending=True)
-        ratings = ratings[ratings[('correct', 'count')] > 1]
-        ratings = ratings[[('correct', 'mean')]]
-        # ratings = ratings.reset_index()
+        ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
+        ratings = ratings[['Context',  'user_id', 'value']]
+        ratings = ratings.groupby(['Context', 'value']).count()
+        ratings = ratings.reset_index()
+        ratings = ratings.pivot(
+            index='Context',
+            columns='value',
+            values='user_id')
+        # ratings = ratings[['id']]
+        ratings = ratings[ratings[2] > 200]
+        ratings.rename(columns=RATING_VALUES, inplace=True)
+        ratings = self.make_relative(ratings)
         return ratings
 
 
@@ -881,7 +906,7 @@ class RatingByContextSize(PlotCommand):
         ratings = load_data.get_rating_with_maps(self.options)
         res2 = []
         res = None
-        for i in range(6, 10):
+        for i in AB_VALUES:
             ratings_ab = ratings[ratings['experiment_setup_id'] == i]
             grouped = ratings_ab.groupby(['value', 'context_size']).count()
             grouped = grouped[['inserted']]
@@ -1130,18 +1155,23 @@ class LearningCurvesByDivider(LearningCurves):
         return res
 
 
-class SuccessByAnswerOrderOnContext(AnswerOrder):
+class ErrorRateByAnswerOrderOnContext(AnswerOrder):
+    legend_loc = 'upper right'
+    marker = '+'
+    adjust_bottom = 0.2
+
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
-        answers = answers[answers['answer_order'] <= 60]
+        answers = answers[answers['answer_order'] <= 50]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
-        grouped = grouped[['correct']]
+        grouped['error_rate'] = 1 - grouped['correct']
+        grouped = grouped[['error_rate']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='answer_order',
             columns='experiment_setup_id',
-            values='correct')
-        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+            values='error_rate')
+        grouped.columns = [AB_VALUES_SHORT[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
 
@@ -1171,7 +1201,7 @@ class AnswerCountByOrder(AnswerOrder):
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
-        answers = answers[answers['answer_order'] <= 60]
+        answers = answers[answers['answer_order'] <= 100]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).count()
         grouped = grouped[['correct']]
         grouped = grouped.reset_index()
@@ -1372,8 +1402,12 @@ class ResponseTimeByAnswerOrderAb(PlotCommand):
     kind = 'line'
     legend_loc = 'upper right'
 
-    def get_data(self):
+    def get_answers(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        return answers
+
+    def get_data(self):
+        answers = self.get_answers()
         answers = answers[answers['answer_order'] <= 60]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).median()
         grouped = grouped[['response_time']]
@@ -1385,6 +1419,51 @@ class ResponseTimeByAnswerOrderAb(PlotCommand):
         grouped.columns = [AB_VALUES[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
+
+
+class ResponseTimeByAnswerOrderOnContextAb(ResponseTimeByAnswerOrderAb):
+
+    def get_answers(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        return answers
+
+
+class ResponseTimeByAnswerOrderAbCorrect(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+    figsize = (16, 6)
+    subplot_column = 'correct'
+    legend_alpha = True
+    ylim = (3000, 9000)
+
+    def get_answers(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        return answers
+
+    def get_data(self):
+        all_answers = self.get_answers()
+        data = []
+        possible_values = sorted(all_answers[self.subplot_column].unique().tolist())
+        for i in possible_values:
+            answers = all_answers[all_answers[self.subplot_column] == i]
+            answers = answers[answers['answer_order'] <= 60]
+            grouped = answers.groupby(['answer_order', 'experiment_setup_id']).median()
+            grouped = grouped[['response_time']]
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='answer_order',
+                columns='experiment_setup_id',
+                values='response_time')
+            grouped.columns = [AB_VALUES[j] for j in grouped.columns]
+            grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+            data.append([grouped, self.subplot_column + ': ' + str(i)])
+        return data
+
+
+class ResponseTimeByAnswerOrderAbGuess(ResponseTimeByAnswerOrderAbCorrect):
+    subplot_column = 'guess'
+    figsize = (8, 6)
+    subplot_x_dim = 2
 
 
 class SuccessByContextSize(PlotCommand):
@@ -1449,6 +1528,7 @@ class RatingByOrder(PlotCommand):
 class RatingByAb(PlotCommand):
     stacked = True
     legend_loc = 'center right'
+    figsize = (6, 4)
 
     def get_data(self):
         ratings = load_data.get_rating_with_maps(self.options)
@@ -1521,7 +1601,9 @@ class RatingInTime(InTimeCommand):
 
     @property
     def answers(self):
-        return load_data.get_rating(self.options)
+        rating = load_data.get_rating(self.options)
+        rating['time'] = rating['inserted']
+        return rating
 
 
 class RatingByDivider(DivisionCommand):
@@ -1732,6 +1814,38 @@ class AnswerCountBySessionAb(PlotCommand):
         grouped = grouped[['answer_count']]
         grouped = grouped.reset_index()
         grouped = grouped.set_index('experiment_setup_id')
+        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        grouped.sort_index(inplace=True)
+        return grouped
+
+
+class AnswersToRatingsRatio(PlotCommand):
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        answers = load_data.get_answers(self.options)
+        grouped = answers.groupby(['user_id', 'experiment_setup_id']).count()
+        grouped = grouped[['id']]
+        grouped.columns = ['answer_count']
+        grouped['answer_count'] = grouped['answer_count'].map(
+            lambda x: bisect.bisect_left([30, 70, 120, 200], x))
+        grouped = grouped.reset_index()
+        print grouped
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings.groupby(['user_id']).count()
+        ratings = ratings[['value']]
+        ratings.columns = ['rating_count']
+        ratings = ratings.reset_index()
+        grouped = pd.merge(
+            ratings,
+            grouped,
+            left_on=['user_id'],
+            right_on=['user_id'],
+        )
+        grouped['diff'] = grouped['answer_count'] - grouped['rating_count']
+        grouped = grouped.groupby(['experiment_setup_id', 'diff']).count()
+        grouped = grouped[['user_id']]
+        grouped.columns = ['answer_count - rating_count']
         grouped.rename(index=AB_VALUES_SHORT, inplace=True)
         grouped.sort_index(inplace=True)
         return grouped

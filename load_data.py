@@ -71,8 +71,8 @@ def get_answers_with_flashcards_and_orders(options):
     for i, g in grouped:
         order_by_user[i] = 0
         for j, row in g['item_id'].iteritems():
-            order_by_user[i] += 1
             answer_orders.append(order_by_user[i])
+            order_by_user[i] += 1
     answers_with_flashcards['answer_order'] = pd.Series(
         answer_orders, index=answers_with_flashcards.index)
     return answers_with_flashcards
@@ -90,8 +90,8 @@ def get_answers_with_flashcards_and_context_orders(options):
     for i, g in grouped:
         order_by_user[i] = 0
         for j, row in g['item_id'].iteritems():
-            order_by_user[i] += 1
             answer_orders.append(order_by_user[i])
+            order_by_user[i] += 1
     answers_with_flashcards['answer_order'] = pd.Series(
         answer_orders, index=answers_with_flashcards.index)
     return answers_with_flashcards
