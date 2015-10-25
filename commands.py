@@ -12,6 +12,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import random
 import bisect
 import seaborn as sns
+import os
 
 
 sns.set_style("whitegrid", {
@@ -201,9 +202,7 @@ class PlotCommand(Command):
             ))
 
             data.plot(**plot_params)
-            data.to_pickle(self.file_name().replace(
-                '.png', '.pdy').replace(
-                'plot', 'plot_data'))
+            data.to_pickle(self.pickle_name(i))
 
             if self.legend is False:
                 pass
@@ -222,6 +221,11 @@ class PlotCommand(Command):
         if self.show_plots and not self.options.hide_plots:
             plt.show()
         plt.clf()
+
+    def pickle_name(self, i):
+        return self.file_name().replace(
+            '.png', '-%d.pdy' % i).replace(
+            'plot', 'plot_data')
 
     def file_name(self):
         if self.options.answers == DATA_DIR + 'answers.csv':
@@ -243,9 +247,11 @@ class PlotCommand(Command):
 
     def _execute(self):
         if self.options.use_cached_data:
-            data = pd.read_pickle(self.file_name().replace(
-                '.png', '.pdy').replace(
-                'plot', 'plot_data'))
+            data = []
+            for i in range(100):
+                if not os.path.isfile(self.pickle_name(i)):
+                    break
+                data.append([pd.read_pickle(self.pickle_name(i)), ''])
         else:
             data = self.get_data()
         self.generate_graph(data)
