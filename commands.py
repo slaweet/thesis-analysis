@@ -823,8 +823,12 @@ class AnswerPlacesByUserHistogram(PlotCommand):
 
 
 class RatingByMap(PlotCommand):
-    adjust_bottom = 0.5
+    subplots_adjust = dict(
+        bottom=0.5,
+    )
     ylim = [0, 1]
+    subplot_x_dim = 4
+    figsize = (16, 6)
 
     def make_relative(self, grouped):
         value_columns = grouped.columns
@@ -838,20 +842,72 @@ class RatingByMap(PlotCommand):
         return grouped
 
     def get_data(self):
-        ratings = load_data.get_rating_with_maps(self.options)
-        ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
-        ratings = ratings[['Context',  'user_id', 'value']]
-        ratings = ratings.groupby(['Context', 'value']).count()
-        ratings = ratings.reset_index()
-        ratings = ratings.pivot(
-            index='Context',
-            columns='value',
-            values='user_id')
-        # ratings = ratings[['id']]
-        ratings = ratings[ratings[2] > 200]
-        ratings.rename(columns=RATING_VALUES, inplace=True)
-        ratings = self.make_relative(ratings)
-        return ratings
+        all_ratings = load_data.get_rating_with_maps(self.options)
+        data = []
+        for i in AB_VALUES:
+            ratings = all_ratings[all_ratings['experiment_setup_id'] == i]
+            ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
+            ratings = ratings[['Context',  'user_id', 'value']]
+            ratings = ratings.groupby(['Context', 'value']).count()
+            ratings = ratings.reset_index()
+            ratings = ratings.pivot(
+                index='Context',
+                columns='value',
+                values='user_id')
+            ratings['all'] = ratings[1] + ratings[2] + ratings[3]
+            ratings = ratings.sort('all', ascending=False)
+            ratings = ratings[:10]
+            ratings.drop('all', axis=1, inplace=True)
+            ratings.rename(columns=RATING_VALUES, inplace=True)
+            ratings = self.make_relative(ratings)
+            data.append([ratings, AB_VALUES[i]])
+        return data
+
+
+class RatingByAnswerCount(PlotCommand):
+    ylim = [0, 1]
+    legend_alpha = True
+
+    def make_relative(self, grouped):
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        return grouped
+
+    def get_data(self):
+        all_ratings = load_data.get_rating_with_maps(self.options)
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        answers = answers.groupby('user_id').count()[['answer_order']]
+        answers['answer_order'] = answers['answer_order'].map(
+            lambda x: bisect.bisect_left([30, 70, 120, 200, 300, 500], x))
+        answers.rename(columns={'answer_order': '(Answer count)'}, inplace=True)
+        answers = answers.reset_index()
+        print answers
+        all_ratings = pd.merge(
+            all_ratings,
+            answers,
+            left_on=['user_id'],
+            right_on=['user_id'],
+        )
+        data = []
+        for i in AB_VALUES:
+            ratings = all_ratings[all_ratings['experiment_setup_id'] == i]
+            ratings = ratings[['(Answer count)',  'user_id', 'value']]
+            ratings = ratings.groupby(['(Answer count)', 'value']).count()
+            ratings = ratings.reset_index()
+            ratings = ratings.pivot(
+                index='(Answer count)',
+                columns='value',
+                values='user_id')
+            ratings.rename(columns=RATING_VALUES, inplace=True)
+            ratings = self.make_relative(ratings)
+            data.append([ratings, AB_VALUES[i]])
+        return data
 
 
 class ResponseTimeByPrevious(PlotCommand):
