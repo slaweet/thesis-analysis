@@ -19,7 +19,7 @@ def main():
                  dest="ab_values", default=DATA_DIR + 'geography.answer_ab_values.csv',
                  help="path to file with values of a/b experiments")
 
-    p.add_option("-d", "--data-dir", action="store",
+    p.add_option("-d", "--data_dir", action="store",
                  dest="data_dir", default=DATA_DIR,
                  help="path to directory with data")
 
@@ -67,6 +67,9 @@ def main():
         print_error('No command specified')
         print_help(possible_commands)
         return
+
+    if options.data_dir != DATA_DIR:
+        options.answers = options.answers.replace(DATA_DIR, options.data_dir)
 
     command = arguments[0]
     if command == 'all':
