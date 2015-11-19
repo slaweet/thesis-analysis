@@ -981,17 +981,18 @@ class AnswerOrder(PlotCommand):
     legend_loc = 'lower right'
 
 
-class SuccessByAnswerOrder(AnswerOrder):
+class ErrorRateByAnswerOrder(AnswerOrder):
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         answers = answers[answers['answer_order'] <= 60]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
-        grouped = grouped[['correct']]
+        grouped['error_rate'] = 1 - grouped['correct']
+        grouped = grouped[['error_rate']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='answer_order',
             columns='experiment_setup_id',
-            values='correct')
+            values='error_rate')
         grouped.columns = [AB_VALUES[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
