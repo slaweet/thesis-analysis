@@ -12,6 +12,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import random
 import bisect
 import seaborn as sns
+import os
 
 
 sns.set_style("whitegrid", {
@@ -228,6 +229,8 @@ class PlotCommand(Command):
             dest_dir = PLOT_DIR
         else:
             dest_dir = PARTIAL_DATA_PLOT_DIR
+        if not os.path.exists(dest_dir):
+            os.makedirs(dest_dir)
         return (dest_dir + utils.convert_from_cammel_case(
             self.plot_name()
         ).replace(' ', '_') + '.png')
@@ -235,6 +238,7 @@ class PlotCommand(Command):
     def plot_name(self):
         return (self.__class__.__name__ +
                 (' ' + self.options.answers.replace('data/', '').replace(
+                    '/', '_').replace(
                     '.csv', '') if not self.options.production else '') +
                 (' ' + self.options.context_name if
                     self.options.context_name is not None else '') +
