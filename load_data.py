@@ -45,7 +45,7 @@ def get_mnemonics(options):
 
 
 def get_rating(options):
-    ratings = read_csv(options.ratings)
+    ratings = read_csv(os.path.join(options.data_dir, options.ratings))
     ratings = ratings.sort(['user_id', 'inserted'], ascending=True)
     rating_orders = []
     order_by_user = {}

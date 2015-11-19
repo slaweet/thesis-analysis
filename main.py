@@ -28,7 +28,7 @@ def main():
                  help="lower_case_hyphenated name of class to separate the answers")
 
     p.add_option("-r", "--ratings", action="store",
-                 dest="ratings", default=DATA_DIR + 'ratings.csv',
+                 dest="ratings", default='ratings.csv',
                  help="path to file with answers inside data dir")
 
     p.add_option("-v", "--verbose", action="store_true",
