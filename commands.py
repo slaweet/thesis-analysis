@@ -59,6 +59,10 @@ AB_VALUES = {
     7: 'Random-Random',
     8: 'Adaptive-Adaptive',
     9: 'Adaptive-Random',
+    14: '50%',
+    15: '65%',
+    16: '80%',
+    17: '95%',
 }
 
 AB_VALUES_SHORT = {
@@ -66,6 +70,10 @@ AB_VALUES_SHORT = {
     7: 'R-R',
     8: 'A-A',
     9: 'A-R',
+    14: '50%',
+    15: '65%',
+    16: '80%',
+    17: '95%',
 }
 
 
@@ -910,7 +918,8 @@ class RatingByContextSize(PlotCommand):
         ratings = load_data.get_rating_with_maps(self.options)
         res2 = []
         res = None
-        for i in AB_VALUES:
+        ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
             ratings_ab = ratings[ratings['experiment_setup_id'] == i]
             grouped = ratings_ab.groupby(['value', 'context_size']).count()
             grouped = grouped[['inserted']]
@@ -1257,7 +1266,8 @@ class UserCurve(PlotCommand):
         more60 = grouped[grouped['time'] >= 60]['user_id']
         answers = answers[answers['user_id'].isin(more60)]
         users = []
-        for i in AB_VALUES:
+        ab_values = sorted(answers['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
             answers_ab = answers[answers['experiment_setup_id'] == i]
             users = users + answers_ab['user_id'].unique()[:self.subplot_x_dim * 2].tolist()
         all_answers = answers
@@ -1312,7 +1322,8 @@ class UsageScatter(PlotCommand):
     def get_data(self):
         all_answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         data = []
-        for i in AB_VALUES:
+        ab_values = sorted(all_answers['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
             answers_ab = all_answers[all_answers['experiment_setup_id'] == i]
             if self.random_users:
                 users = random.sample(answers_ab['user_id'].unique(), self.ylim[1])
