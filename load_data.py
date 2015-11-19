@@ -18,6 +18,8 @@ def get_cached(fn):
     def func_wrapper(options):
         file_name = directory + '/' + fn.__name__ + options.answers.replace('/', '_') + '.pdy'
         if os.path.isfile(file_name) and not options.no_cache:
+            if options.verbose:
+                print 'get_cached', file_name
             data = pd.read_pickle(file_name)
         else:
             data = fn(options)
