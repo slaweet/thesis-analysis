@@ -1431,7 +1431,7 @@ class ResponseTimeByGuessAb(PlotCommand):
         for i in ab_values:
             answers = all_answers[all_answers['experiment_setup_id'] == i]
             answers['number of options'] = 1 / answers['guess']
-            grouped = answers.groupby(['number of options']).median()
+            grouped = answers.groupby(['number of options', 'direction']).median()
             grouped = grouped[['response_time']]
             data.append([grouped,  AB_VALUES[i]])
         return data
