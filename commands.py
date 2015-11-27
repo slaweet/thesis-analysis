@@ -1414,6 +1414,51 @@ class ResponseTimeByAnswerOrderOnContext(PlotCommand):
         return grouped
 
 
+class ResponseTimeByGuessAb(PlotCommand):
+    kind = 'bar'
+    ylim = (0, 7000)
+    legend_loc = 'lower right'
+    subplots_adjust = dict(
+        hspace=0.7,
+        wspace=0.3,
+        bottom=0.2,
+    )
+
+    def get_data(self):
+        all_answers = load_data.get_answers(self.options)
+        ab_values = sorted(all_answers['experiment_setup_id'].unique().tolist())
+        data = []
+        for i in ab_values:
+            answers = all_answers[all_answers['experiment_setup_id'] == i]
+            answers['number of options'] = 1 / answers['guess']
+            grouped = answers.groupby(['number of options']).median()
+            grouped = grouped[['response_time']]
+            data.append([grouped,  AB_VALUES[i]])
+        return data
+
+
+class ResponseTimeByAnswerOrderGuess(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+
+    def get_answers(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        return answers
+
+    def get_data(self):
+        answers = self.get_answers()
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'guess']).median()
+        grouped = grouped[['response_time']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='guess',
+            values='response_time')
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
 class ResponseTimeByAnswerOrderAb(PlotCommand):
     kind = 'line'
     legend_loc = 'upper right'
