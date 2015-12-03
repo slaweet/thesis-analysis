@@ -91,12 +91,18 @@ def main():
         possible_commands[command](options).execute()
     else:
         print_error('Unknown command: ' + command)
-        print_help(possible_commands)
+        print_help(possible_commands, command)
 
 
-def print_help(possible_commands):
-    print 'Available commands:'
-    print '  ' + '\n  '.join(sorted(possible_commands.keys()))
+def print_help(possible_commands, command=None):
+    all_names =sorted(possible_commands.keys())
+    if command is None:
+        print 'Available commands:'
+        print '  ' + '\n  '.join(all_names)
+    else:
+        matching_names = [key for key in all_names if command in key]
+        print 'Commands containing "%s":' % command
+        print '  ' + '\n  '.join(matching_names)
 
 
 class bcolors:
