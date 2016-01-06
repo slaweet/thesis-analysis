@@ -314,7 +314,9 @@ class DivisionCommand(PlotCommand):
     def plot_name(self):
         return (self.__class__.__name__ + ' ' +
                 self.options.divider +
-                (' ' + self.options.answers.replace('data/', '').replace(
+                (' ' + self.options.answers.replace(
+                    'data/', '').replace(
+                    '/', '_').replace(
                     '.csv', '') if not self.options.production else ''))
 
 
@@ -700,7 +702,9 @@ class DivisionInTime(InTimeCommand):
     def plot_name(self):
         return (self.__class__.__name__ + ' ' +
                 self.options.divider + ' ' +
-                (self.options.answers.replace('data/', '').replace(
+                (self.options.answers.replace(
+                    'data/', '').replace(
+                    '/', '_').replace(
                     '.csv', '') if not self.options.production else ''))
 
     @property
