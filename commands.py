@@ -1709,6 +1709,56 @@ class RatingByDivider(DivisionCommand):
         return grouped
 
 
+class RatingByDividerAb(DivisionCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.7,
+        wspace=0.3,
+        bottom=0.2,
+    )
+    ylim = (0, 1)
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings[['user_id', 'value']]
+        div = divider.Divider.get_divider(self.options)
+        answers = load_data.get_answers(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        users = answers.drop_duplicates(['user_id'])
+        ratings = pd.merge(
+            ratings,
+            users,
+            left_on=['user_id'],
+            right_on=['user_id'],
+        )
+        data = []
+        divider_values = sorted(ratings[new_column_name].unique().tolist())
+        for i in divider_values:
+            ratings_ab = ratings[ratings[new_column_name] == i]
+            ratings_ab = ratings_ab[['value', 'experiment_setup_id', 'user_id']]
+            grouped = ratings_ab.groupby(['value', 'experiment_setup_id']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='experiment_setup_id',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            data.append([grouped,  "Is school user: " + str(i)])
+        return data
+
+
 class RatingByDividers(PlotCommand):
     stacked = True
     adjust_bottom = 0.2
