@@ -59,6 +59,10 @@ AB_VALUES = {
     7: 'Random-Random',
     8: 'Adaptive-Adaptive',
     9: 'Adaptive-Random',
+    14: '50%',
+    15: '65%',
+    16: '80%',
+    17: '95%',
 }
 
 AB_VALUES_SHORT = {
@@ -66,6 +70,10 @@ AB_VALUES_SHORT = {
     7: 'R-R',
     8: 'A-A',
     9: 'A-R',
+    14: '50%',
+    15: '65%',
+    16: '80%',
+    17: '95%',
 }
 
 
@@ -232,6 +240,8 @@ class PlotCommand(Command):
             dest_dir = PLOT_DIR
         else:
             dest_dir = PARTIAL_DATA_PLOT_DIR
+        if not os.path.exists(dest_dir):
+            os.makedirs(dest_dir)
         return (dest_dir + utils.convert_from_cammel_case(
             self.plot_name()
         ).replace(' ', '_') + '.png')
@@ -239,6 +249,7 @@ class PlotCommand(Command):
     def plot_name(self):
         return (self.__class__.__name__ +
                 (' ' + self.options.answers.replace('data/', '').replace(
+                    '/', '_').replace(
                     '.csv', '') if not self.options.production else '') +
                 (' ' + self.options.context_name if
                     self.options.context_name is not None else '') +
@@ -308,7 +319,9 @@ class DivisionCommand(PlotCommand):
     def plot_name(self):
         return (self.__class__.__name__ + ' ' +
                 self.options.divider +
-                (' ' + self.options.answers.replace('data/', '').replace(
+                (' ' + self.options.answers.replace(
+                    'data/', '').replace(
+                    '/', '_').replace(
                     '.csv', '') if not self.options.production else ''))
 
 
@@ -694,7 +707,9 @@ class DivisionInTime(InTimeCommand):
     def plot_name(self):
         return (self.__class__.__name__ + ' ' +
                 self.options.divider + ' ' +
-                (self.options.answers.replace('data/', '').replace(
+                (self.options.answers.replace(
+                    'data/', '').replace(
+                    '/', '_').replace(
                     '.csv', '') if not self.options.production else ''))
 
     @property
@@ -968,7 +983,8 @@ class RatingByContextSize(PlotCommand):
         ratings = load_data.get_rating_with_maps(self.options)
         res2 = []
         res = None
-        for i in AB_VALUES:
+        ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
             ratings_ab = ratings[ratings['experiment_setup_id'] == i]
             grouped = ratings_ab.groupby(['value', 'context_size']).count()
             grouped = grouped[['inserted']]
@@ -1030,17 +1046,18 @@ class AnswerOrder(PlotCommand):
     legend_loc = 'lower right'
 
 
-class SuccessByAnswerOrder(AnswerOrder):
+class ErrorRateByAnswerOrder(AnswerOrder):
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         answers = answers[answers['answer_order'] <= 60]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
-        grouped = grouped[['correct']]
+        grouped['error_rate'] = 1 - grouped['correct']
+        grouped = grouped[['error_rate']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='answer_order',
             columns='experiment_setup_id',
-            values='correct')
+            values='error_rate')
         grouped.columns = [AB_VALUES[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
@@ -1315,7 +1332,8 @@ class UserCurve(PlotCommand):
         more60 = grouped[grouped['time'] >= 60]['user_id']
         answers = answers[answers['user_id'].isin(more60)]
         users = []
-        for i in AB_VALUES:
+        ab_values = sorted(answers['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
             answers_ab = answers[answers['experiment_setup_id'] == i]
             users = users + answers_ab['user_id'].unique()[:self.subplot_x_dim * 2].tolist()
         all_answers = answers
@@ -1370,7 +1388,8 @@ class UsageScatter(PlotCommand):
     def get_data(self):
         all_answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         data = []
-        for i in AB_VALUES:
+        ab_values = sorted(all_answers['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
             answers_ab = all_answers[all_answers['experiment_setup_id'] == i]
             if self.random_users:
                 users = random.sample(answers_ab['user_id'].unique(), self.ylim[1])
@@ -1457,6 +1476,51 @@ class ResponseTimeByAnswerOrderOnContext(PlotCommand):
         grouped = answers.groupby(['answer_order']).median()
         grouped = grouped.reset_index()
         grouped = grouped[['response_time']]
+        return grouped
+
+
+class ResponseTimeByGuessAb(PlotCommand):
+    kind = 'bar'
+    ylim = (0, 7000)
+    legend_loc = 'lower right'
+    subplots_adjust = dict(
+        hspace=0.7,
+        wspace=0.3,
+        bottom=0.2,
+    )
+
+    def get_data(self):
+        all_answers = load_data.get_answers(self.options)
+        ab_values = sorted(all_answers['experiment_setup_id'].unique().tolist())
+        data = []
+        for i in ab_values:
+            answers = all_answers[all_answers['experiment_setup_id'] == i]
+            answers['number of options'] = 1 / answers['guess']
+            grouped = answers.groupby(['number of options', 'direction']).median()
+            grouped = grouped[['response_time']]
+            data.append([grouped,  AB_VALUES[i]])
+        return data
+
+
+class ResponseTimeByAnswerOrderGuess(PlotCommand):
+    kind = 'line'
+    legend_loc = 'upper right'
+
+    def get_answers(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        return answers
+
+    def get_data(self):
+        answers = self.get_answers()
+        answers = answers[answers['answer_order'] <= 60]
+        grouped = answers.groupby(['answer_order', 'guess']).median()
+        grouped = grouped[['response_time']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='guess',
+            values='response_time')
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
 
 
@@ -1704,6 +1768,56 @@ class RatingByDivider(DivisionCommand):
         grouped = grouped[value_columns]
         grouped.rename(columns=RATING_VALUES, inplace=True)
         return grouped
+
+
+class RatingByDividerAb(DivisionCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.7,
+        wspace=0.3,
+        bottom=0.2,
+    )
+    ylim = (0, 1)
+
+    def get_data(self):
+        ratings = load_data.get_rating(self.options)
+        ratings = ratings[['user_id', 'value']]
+        div = divider.Divider.get_divider(self.options)
+        answers = load_data.get_answers(self.options)
+        new_column_name = div.column_name
+        answers = div.divide(answers, new_column_name)
+        users = answers.drop_duplicates(['user_id'])
+        ratings = pd.merge(
+            ratings,
+            users,
+            left_on=['user_id'],
+            right_on=['user_id'],
+        )
+        data = []
+        divider_values = sorted(ratings[new_column_name].unique().tolist())
+        for i in divider_values:
+            ratings_ab = ratings[ratings[new_column_name] == i]
+            ratings_ab = ratings_ab[['value', 'experiment_setup_id', 'user_id']]
+            grouped = ratings_ab.groupby(['value', 'experiment_setup_id']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='experiment_setup_id',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            data.append([grouped,  "Is school user: " + str(i)])
+        return data
 
 
 class RatingByDividers(PlotCommand):

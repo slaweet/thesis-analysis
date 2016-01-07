@@ -18,6 +18,8 @@ def get_cached(fn):
     def func_wrapper(options):
         file_name = directory + '/' + fn.__name__ + options.answers.replace('/', '_') + '.pdy'
         if os.path.isfile(file_name) and not options.no_cache:
+            if options.verbose:
+                print 'get_cached', file_name
             data = pd.read_pickle(file_name)
         else:
             data = fn(options)
@@ -43,7 +45,7 @@ def get_mnemonics(options):
 
 
 def get_rating(options):
-    ratings = read_csv(options.ratings)
+    ratings = read_csv(os.path.join(options.data_dir, options.ratings))
     ratings = ratings.sort(['user_id', 'inserted'], ascending=True)
     rating_orders = []
     order_by_user = {}
@@ -137,7 +139,7 @@ def get_answers(options, strip_times=False, strip_less_than_10=False):
         grouped = grouped.reset_index()
         more10 = grouped[grouped['inserted'] >= 10]['user_id']
         answers = answers[answers['user_id'].isin(more10)]
-    ip_address = read_csv(DATA_DIR + 'ip_address.csv')
+    ip_address = read_csv(options.data_dir + 'ip_address.csv')
     answers = pd.merge(
         answers,
         ip_address,
@@ -193,7 +195,7 @@ def get_answers_with_flashcards(options):
 
 
 def get_flashcards(options):
-    flashcards = read_csv(DATA_DIR + 'flashcards.csv')
+    flashcards = read_csv(options.data_dir + 'flashcards.csv')
     contexts = flashcards.groupby(['context_name', 'term_type']).count()
     contexts = contexts[['item_id']]
     contexts = contexts.reset_index()

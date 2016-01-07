@@ -19,7 +19,7 @@ def main():
                  dest="ab_values", default=DATA_DIR + 'geography.answer_ab_values.csv',
                  help="path to file with values of a/b experiments")
 
-    p.add_option("-d", "--data-dir", action="store",
+    p.add_option("-d", "--data_dir", action="store",
                  dest="data_dir", default=DATA_DIR,
                  help="path to directory with data")
 
@@ -28,7 +28,7 @@ def main():
                  help="lower_case_hyphenated name of class to separate the answers")
 
     p.add_option("-r", "--ratings", action="store",
-                 dest="ratings", default=DATA_DIR + 'ratings.csv',
+                 dest="ratings", default='ratings.csv',
                  help="path to file with answers inside data dir")
 
     p.add_option("-v", "--verbose", action="store_true",
@@ -68,6 +68,9 @@ def main():
         print_help(possible_commands)
         return
 
+    if options.data_dir != DATA_DIR:
+        options.answers = options.answers.replace(DATA_DIR, options.data_dir)
+
     command = arguments[0]
     if command == 'all':
         errors = []
@@ -88,12 +91,18 @@ def main():
         possible_commands[command](options).execute()
     else:
         print_error('Unknown command: ' + command)
-        print_help(possible_commands)
+        print_help(possible_commands, command)
 
 
-def print_help(possible_commands):
-    print 'Available commands:'
-    print '  ' + '\n  '.join(sorted(possible_commands.keys()))
+def print_help(possible_commands, command=None):
+    all_names =sorted(possible_commands.keys())
+    if command is None:
+        print 'Available commands:'
+        print '  ' + '\n  '.join(all_names)
+    else:
+        matching_names = [key for key in all_names if command in key]
+        print 'Commands containing "%s":' % command
+        print '  ' + '\n  '.join(matching_names)
 
 
 class bcolors:
