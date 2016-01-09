@@ -1047,9 +1047,12 @@ class AnswerOrder(PlotCommand):
 
 
 class ErrorRateByAnswerOrder(AnswerOrder):
+    legend_loc = 'upper right'
+    marker = '+'
+
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
-        answers = answers[answers['answer_order'] <= 60]
+        answers = answers[answers['answer_order'] <= 100]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
         grouped['error_rate'] = 1 - grouped['correct']
         grouped = grouped[['error_rate']]
@@ -1250,7 +1253,7 @@ class ErrorRateByAnswerOrderByContext(AnswerOrder):
         answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
         answers['Context'] = answers['context_name'] + ' - ' + answers['term_type']
         top_contexts = answers.groupby('Context').count()[['id']].sort(
-            ['id'], ascending=[False]).head(12).reset_index()['Context'].tolist()
+            ['id'], ascending=[False]).head(11).reset_index()['Context'].tolist()
         answers = answers[answers['answer_order'] <= 100]
         data = []
         for context in top_contexts:
@@ -1276,7 +1279,7 @@ class ErrorRateByAnswerOrderOnContext(AnswerOrder):
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
-        answers = answers[answers['answer_order'] <= 50]
+        answers = answers[answers['answer_order'] <= 100]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
         grouped['error_rate'] = 1 - grouped['correct']
         grouped = grouped[['error_rate']]
@@ -1844,6 +1847,7 @@ class RatingByDividerAb(DivisionCommand):
         wspace=0.3,
         bottom=0.2,
     )
+    figsize = (8, 4)
     ylim = (0, 1)
 
     def get_data(self):
