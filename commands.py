@@ -2003,6 +2003,48 @@ class RatingBySuccessAb(DivisionCommand):
         )
         ratings = ratings[ratings['correct'] >= 0.4]
         ratings['Success rate'] = ratings['correct'].map(
+            lambda x: round(x * 1, 1) / 1.0)
+        ratings = ratings[['value', 'Success rate', 'user_id', 'experiment_setup_id']]
+
+        data = []
+        ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
+            ratings_ab = ratings[ratings['experiment_setup_id'] == i]
+            grouped = ratings_ab.groupby(['value', 'Success rate']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='Success rate',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            data.append([grouped, "Experimental condition: " + AB_VALUES[i]])
+        return data
+
+
+class RatingByRollingSuccessAb(PlotCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.3,
+        wspace=0.3,
+        bottom=0.2,
+    )
+    ylim = (0, 1)
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_rolling_success(self.options)
+        ratings = ratings[ratings['rolling_success'] >= 0.4]
+        ratings['Success rate'] = ratings['rolling_success'].map(
             lambda x: round(x * 2, 1) / 2.0)
         ratings = ratings[['value', 'Success rate', 'user_id', 'experiment_setup_id']]
 
