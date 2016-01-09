@@ -1686,6 +1686,36 @@ class RatingByOrder(PlotCommand):
         return grouped
 
 
+class RatingByOrderAb(PlotCommand):
+    legend_loc = 'upper right'
+    legend_alpha = True
+    ylim = (0, 1)
+
+    def get_data(self):
+        all_ratings = load_data.get_rating_with_maps(self.options)
+        data = []
+        for i in AB_VALUES:
+            ratings = all_ratings[all_ratings['experiment_setup_id'] == i]
+            grouped = ratings.groupby(['value', 'rating_order']).count()
+            grouped = grouped[['user_id']]
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='rating_order',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            data.append([grouped, AB_VALUES_SHORT[i]])
+        return data
+
+
 class RatingByAb(PlotCommand):
     stacked = True
     legend_loc = 'center right'
