@@ -859,29 +859,36 @@ class RatingByMap(PlotCommand):
     def get_data(self):
         all_ratings = load_data.get_rating_with_maps(self.options)
         data = []
-        for i in AB_VALUES:
-            ratings = all_ratings[all_ratings['experiment_setup_id'] == i]
-            ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
-            ratings = ratings[['Context',  'user_id', 'value']]
-            ratings = ratings.groupby(['Context', 'value']).count()
-            ratings = ratings.reset_index()
+        ratings = all_ratings
+        ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
+        ratings = ratings[['Context',  'user_id', 'value', 'experiment_setup_id']]
+        ratings = ratings.groupby(['Context', 'value', 'experiment_setup_id']).count()
+        all_ratings = ratings.reset_index()
+        ratings = ratings.sort('user_id', ascending=False)
+        ratings = ratings[:10]
+        for i in all_ratings['Context'].tolist():
+            print 'i', i
+            ratings = all_ratings[all_ratings['Context'] == i]
+            print 'tr', ratings
+            ratings = ratings[['user_id', 'value', 'experiment_setup_id']]
             ratings = ratings.pivot(
-                index='Context',
+                index='experiment_setup_id',
                 columns='value',
                 values='user_id')
             ratings['all'] = ratings[1] + ratings[2] + ratings[3]
             ratings = ratings.sort('all', ascending=False)
             ratings = ratings[:10]
             ratings.drop('all', axis=1, inplace=True)
-            ratings.rename(columns=RATING_VALUES, inplace=True)
+            # ratings.rename(columns=RATING_VALUES, inplace=True)
             ratings = self.make_relative(ratings)
-            data.append([ratings, AB_VALUES[i]])
+            data.append([ratings, i])
         return data
 
 
 class RatingByAnswerCount(PlotCommand):
     ylim = [0, 1]
     legend_alpha = True
+    answer_counts = [30, 70, 120, 200, 300, 500]
 
     def make_relative(self, grouped):
         value_columns = grouped.columns
@@ -899,7 +906,7 @@ class RatingByAnswerCount(PlotCommand):
         answers = load_data.get_answers_with_flashcards_and_orders(self.options)
         answers = answers.groupby('user_id').count()[['answer_order']]
         answers['answer_order'] = answers['answer_order'].map(
-            lambda x: bisect.bisect_left([30, 70, 120, 200, 300, 500], x))
+            lambda x: self.answer_counts[bisect.bisect_left(self.answer_counts, x) - 1])
         answers.rename(columns={'answer_order': '(Answer count)'}, inplace=True)
         answers = answers.reset_index()
         print answers
@@ -1253,7 +1260,7 @@ class ErrorRateByAnswerOrderByContext(AnswerOrder):
         answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
         answers['Context'] = answers['context_name'] + ' - ' + answers['term_type']
         top_contexts = answers.groupby('Context').count()[['id']].sort(
-            ['id'], ascending=[False]).head(11).reset_index()['Context'].tolist()
+            ['id'], ascending=[False]).head(12).reset_index()['Context'].tolist()
         answers = answers[answers['answer_order'] <= 100]
         data = []
         for context in top_contexts:
@@ -1977,7 +1984,7 @@ class RatingBySuccess(DivisionCommand):
         return grouped
 
 
-class RatingBySuccessAb(DivisionCommand):
+class RatingBySuccessAb(PlotCommand):
     adjust_bottom = 0.2
     legend_loc = 'upper right'
     legend_alpha = True
