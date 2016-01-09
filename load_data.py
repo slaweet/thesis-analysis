@@ -99,10 +99,27 @@ def get_answers_with_flashcards_and_context_orders(options):
     return answers_with_flashcards
 
 
+@get_cached
 def get_rating_with_maps(options):
     ratings = get_rating(options)
     ratings['answer_order'] = ratings['rating_order'].map(lambda x: RATING_INTERVALS[x - 1])
     answers = get_answers_with_flashcards_and_orders(options)
+
+    ratings_with_maps = pd.merge(
+        ratings,
+        answers,
+        left_on=['user_id', 'answer_order'],
+        right_on=['user_id', 'answer_order'],
+    )
+    return ratings_with_maps
+
+
+@get_cached
+def get_rating_with_rolling_success(options):
+    ratings = get_rating(options)
+    ratings['answer_order'] = ratings['rating_order'].map(lambda x: RATING_INTERVALS[x - 1])
+    answers = get_answers_with_flashcards_and_orders(options)
+    answers['rolling_success'] = sum([answers['correct'].shift(i) for i in range(10)]) / 10.0
 
     ratings_with_maps = pd.merge(
         ratings,
