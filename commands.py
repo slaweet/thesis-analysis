@@ -1890,6 +1890,48 @@ class RatingByDividerAb(DivisionCommand):
         return data
 
 
+class RatingByContextAb(DivisionCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    ylim = (0, 1)
+    subplots_adjust = dict(
+        wspace=0.5,
+        hspace=0.3,
+    )
+    figsize = (20, 15)
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_maps(self.options)
+        ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
+        print ratings
+        top_contexts = ratings.groupby('Context').count()[['inserted']].sort(
+            ['inserted'], ascending=[False]).head(12).reset_index()['Context'].tolist()
+        data = []
+        for context in top_contexts:
+            ratings_ab = ratings[ratings['Context'] == context]
+            ratings_ab = ratings_ab[['value', 'experiment_setup_id', 'user_id']]
+            grouped = ratings_ab.groupby(['value', 'experiment_setup_id']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='experiment_setup_id',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            grouped.index.name = 'Experiment condition'
+            data.append([grouped,  context])
+        return data
+
+
 class RatingBySuccess(DivisionCommand):
     adjust_bottom = 0.2
     legend_loc = 'upper right'
