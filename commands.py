@@ -1234,6 +1234,41 @@ class LearningCurvesByDivider(LearningCurves):
         return res
 
 
+class ErrorRateByAnswerOrderByContext(AnswerOrder):
+    adjust_bottom = 0.2
+    legend_alpha = True
+    legend_loc = 'upper right'
+    subplots_adjust = dict(
+        wspace=0.5,
+        hspace=0.3,
+    )
+    ylim = [0, 0.6]
+    marker = '+'
+    figsize = (20, 15)
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        answers['Context'] = answers['context_name'] + ' - ' + answers['term_type']
+        top_contexts = answers.groupby('Context').count()[['id']].sort(
+            ['id'], ascending=[False]).head(12).reset_index()['Context'].tolist()
+        answers = answers[answers['answer_order'] <= 100]
+        data = []
+        for context in top_contexts:
+            answers_on_context = answers[answers['Context'] == context]
+            grouped = answers_on_context.groupby(['answer_order', 'experiment_setup_id']).mean()
+            grouped['error_rate'] = 1 - grouped['correct']
+            grouped = grouped[['error_rate']]
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='answer_order',
+                columns='experiment_setup_id',
+                values='error_rate')
+            grouped.columns = [AB_VALUES_SHORT[i] for i in grouped.columns]
+            grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+            data.append([grouped, context])
+        return data
+
+
 class ErrorRateByAnswerOrderOnContext(AnswerOrder):
     legend_loc = 'upper right'
     marker = '+'
