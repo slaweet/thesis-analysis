@@ -2049,7 +2049,7 @@ class RatingBySuccessAb(PlotCommand):
     legend_loc = 'upper right'
     legend_alpha = True
     subplots_adjust = dict(
-        hspace=0.3,
+        hspace=0.5,
         wspace=0.3,
         bottom=0.2,
     )
@@ -2069,18 +2069,18 @@ class RatingBySuccessAb(PlotCommand):
             right_on=['user_id'],
         )
         ratings = ratings[ratings['correct'] >= 0.4]
-        ratings['Success rate'] = ratings['correct'].map(
+        ratings['Global success rate'] = ratings['correct'].map(
             lambda x: round(x * 1, 1) / 1.0)
-        ratings = ratings[['value', 'Success rate', 'user_id', 'experiment_setup_id']]
+        ratings = ratings[['value', 'Global success rate', 'user_id', 'experiment_setup_id']]
 
         data = []
         ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
         for i in ab_values:
             ratings_ab = ratings[ratings['experiment_setup_id'] == i]
-            grouped = ratings_ab.groupby(['value', 'Success rate']).count()
+            grouped = ratings_ab.groupby(['value', 'Global success rate']).count()
             grouped = grouped.reset_index()
             grouped = grouped.pivot(
-                index='Success rate',
+                index='Global success rate',
                 columns='value',
                 values='user_id')
             value_columns = grouped.columns
@@ -2102,7 +2102,7 @@ class RatingByRollingSuccessAb(PlotCommand):
     legend_loc = 'upper right'
     legend_alpha = True
     subplots_adjust = dict(
-        hspace=0.3,
+        hspace=0.5,
         wspace=0.3,
         bottom=0.2,
     )
@@ -2111,18 +2111,18 @@ class RatingByRollingSuccessAb(PlotCommand):
     def get_data(self):
         ratings = load_data.get_rating_with_rolling_success(self.options)
         ratings = ratings[ratings['rolling_success'] >= 0.4]
-        ratings['Success rate'] = ratings['rolling_success'].map(
+        ratings['Last 10 answers success rate'] = ratings['rolling_success'].map(
             lambda x: round(x * 2, 1) / 2.0)
-        ratings = ratings[['value', 'Success rate', 'user_id', 'experiment_setup_id']]
+        ratings = ratings[['value', 'Last 10 answers success rate', 'user_id', 'experiment_setup_id']]
 
         data = []
         ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
         for i in ab_values:
             ratings_ab = ratings[ratings['experiment_setup_id'] == i]
-            grouped = ratings_ab.groupby(['value', 'Success rate']).count()
+            grouped = ratings_ab.groupby(['value', 'Last 10 answers success rate']).count()
             grouped = grouped.reset_index()
             grouped = grouped.pivot(
-                index='Success rate',
+                index='Last 10 answers success rate',
                 columns='value',
                 values='user_id')
             value_columns = grouped.columns
