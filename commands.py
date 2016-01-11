@@ -1337,6 +1337,29 @@ class ErrorRateByAnswerOrderOnContext(AnswerOrder):
         return grouped
 
 
+class ErrorRateBySetOrderOnContext(AnswerOrder):
+    legend_loc = 'upper right'
+    marker = '+'
+    adjust_bottom = 0.2
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        answers = answers[answers['metainfo_id'] != 1]
+        answers['set_order'] = answers['answer_order'].apply(lambda x: x / 10)
+        answers = answers[answers['set_order'] <= 10]
+        grouped = answers.groupby(['set_order', 'experiment_setup_id']).mean()
+        grouped['error_rate'] = 1 - grouped['correct']
+        grouped = grouped[['error_rate']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='set_order',
+            columns='experiment_setup_id',
+            values='error_rate')
+        grouped.columns = [AB_VALUES_SHORT[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+
 class IsNotAnsweredByAnswerOrderOnContext(AnswerOrder):
     legend_loc = 'upper right'
 
