@@ -2139,6 +2139,125 @@ class RatingByRollingSuccessAb(PlotCommand):
         return data
 
 
+class RatingByRollingResponseTimeAb(PlotCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.5,
+        wspace=0.3,
+        bottom=0.2,
+    )
+    ylim = (0, 1)
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_rolling_response_time(self.options)
+        ratings = ratings[ratings['rolling_response_time'] < 128000]
+        ratings = ratings[ratings['rolling_response_time'] > 0]
+        ratings['Last 10 answers avg response time'] = ratings['rolling_response_time'].map(
+            lambda x: int(round(math.log(x / 1000, 2))) ** 2)
+        ratings = ratings[['value', 'Last 10 answers avg response time', 'user_id', 'experiment_setup_id']]
+
+        data = []
+        ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
+            ratings_ab = ratings[ratings['experiment_setup_id'] == i]
+            grouped = ratings_ab.groupby(['value', 'Last 10 answers avg response time']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='Last 10 answers avg response time',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            data.append([grouped, "Experimental condition: " + AB_VALUES[i]])
+        return data
+
+
+class RatingByRollingResponseTimeAbAbsolute(PlotCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.5,
+        wspace=0.3,
+        bottom=0.2,
+    )
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_rolling_response_time(self.options)
+        ratings = ratings[ratings['rolling_response_time'] < 128000]
+        ratings = ratings[ratings['rolling_response_time'] > 0]
+        ratings['Last 10 answers avg response time'] = ratings['rolling_response_time'].map(
+            lambda x: int(round(math.log(x / 1000, 2))) ** 2)
+        ratings = ratings[['value', 'Last 10 answers avg response time', 'user_id', 'experiment_setup_id']]
+
+        data = []
+        ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
+            ratings_ab = ratings[ratings['experiment_setup_id'] == i]
+            grouped = ratings_ab.groupby(['value', 'Last 10 answers avg response time']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='Last 10 answers avg response time',
+                columns='value',
+                values='user_id')
+            grouped = grouped.fillna(0)
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            data.append([grouped, "Experimental condition: " + AB_VALUES[i]])
+        return data
+
+
+class RatingByRollingResponseTimeQuantileAb(PlotCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.5,
+        wspace=0.3,
+        bottom=0.2,
+    )
+    ylim = (0, 1)
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_rolling_response_time(self.options)
+        bins = 10
+        intervals = ratings['rolling_response_time'].quantile([i / float(bins) for i in range(0, bins)]).tolist()
+        intervals = map(int, map(round, intervals))
+        ratings['Last 10 answers avg response time'] = ratings['rolling_response_time'].map(
+            lambda x: round(intervals[bisect.bisect_left(intervals, x) - 1] / 1000.0, 1))
+        ratings = ratings[['value', 'Last 10 answers avg response time', 'user_id', 'experiment_setup_id']]
+
+        data = []
+        ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
+        for i in ab_values:
+            ratings_ab = ratings[ratings['experiment_setup_id'] == i]
+            grouped = ratings_ab.groupby(['value', 'Last 10 answers avg response time']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='Last 10 answers avg response time',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            data.append([grouped, "Experimental condition: " + AB_VALUES[i]])
+        return data
+
+
 class RatingByRollingSuccessContexts(PlotCommand):
     adjust_bottom = 0.2
     legend_loc = 'upper right'
