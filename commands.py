@@ -2139,6 +2139,50 @@ class RatingByRollingSuccessAb(PlotCommand):
         return data
 
 
+class RatingByRollingSuccessContexts(PlotCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    ylim = (0, 1)
+    subplots_adjust = dict(
+        wspace=0.5,
+        hspace=0.3,
+    )
+    figsize = (20, 15)
+
+    def get_data(self):
+        ratings = load_data.get_rating_with_rolling_success(self.options)
+        ratings = ratings[ratings['rolling_success'] >= 0.4]
+        ratings['Success rate'] = ratings['rolling_success'].map(
+            lambda x: round(x * 2, 1) / 2.0)
+        ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
+        top_contexts = ratings.groupby('Context').count()[['inserted']].sort(
+            ['inserted'], ascending=[False]).head(12).reset_index()['Context'].tolist()
+        ratings = ratings[['value', 'Success rate', 'user_id', 'Context']]
+
+        data = []
+        for context in top_contexts:
+            ratings_ab = ratings[ratings['Context'] == context]
+            grouped = ratings_ab.groupby(['value', 'Success rate']).count()
+            grouped = grouped.reset_index()
+            grouped = grouped.pivot(
+                index='Success rate',
+                columns='value',
+                values='user_id')
+            value_columns = grouped.columns
+            grouped = grouped.fillna(0)
+            grouped['All'] = 0
+            for c in value_columns:
+                grouped['All'] += grouped[c]
+            for c in value_columns:
+                grouped[c] = grouped[c] / grouped['All']
+            grouped = grouped[value_columns]
+            grouped.rename(columns=RATING_VALUES, inplace=True)
+            grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            data.append([grouped, context])
+        return data
+
+
 class RatingByDividers(PlotCommand):
     stacked = True
     adjust_bottom = 0.2
