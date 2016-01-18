@@ -127,14 +127,15 @@ class PlotCommand(Command):
     edgecolor = None
     subplots_adjust = None
     subplots_first = 1
+    subplot_legend_index = 0
+    xticks = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
         self.show_plots = show_plots
 
     def get_plot_params(self, subplot_index):
-        if subplot_index > 0:
-            self.legend = False
+        self.legend = subplot_index == self.subplot_legend_index
         plot_params = dict(
             kind=self.kind,
             subplots=self.subplots,
@@ -195,19 +196,34 @@ class PlotCommand(Command):
                 ax = fig.add_subplot(round(math.sqrt(len(data_list))),
                                      math.ceil(math.sqrt(len(data_list))), i + self.subplots_first)
 
+            if type(self.xticks) is list:
+                ax.xaxis.set_ticks(self.xticks[i])
+
             if self.ylim is not None:
                 ax.set_ylim(self.ylim)
 
-            if self.xlim is not None:
-                ax.set_xlim(self.xlim)
+            if type(self.xlim) is list:
+                xlim = self.xlim[i]
+            else:
+                xlim = self.xlim
+            if xlim is not None:
+                ax.set_xlim(xlim)
 
             if len(data_list) > 1:
                 plot_params.update(dict(
                     title=data.columns.levels[0][0] if hasattr(data.columns, 'levels') else data_list[i][1],
                 ))
+                file_set_contents(self.pickle_name(i, 'title'), data_list[i][1])
             plot_params.update(dict(
                 ax=ax,
             ))
+            if len(data_list[i]) > 2:
+                deviations = data_list[i][2]
+                plot_params.update(dict(
+                    xerr=deviations,
+                ))
+                deviations.to_pickle(self.pickle_name(i, 'deviations'))
+                print 'ERRORS', data_list[i][2]
 
             data.plot(**plot_params)
             data.to_pickle(self.pickle_name(i))
@@ -217,7 +233,7 @@ class PlotCommand(Command):
             elif self.legend_loc is not None:
                 legend = ax.legend(loc=self.legend_loc, fontsize=self.fontsize)
             elif self.legend_bbox is not None:
-                legend = ax.legend(bbox_to_anchor=self.legend_bbox)
+                legend = ax.legend(bbox_to_anchor=self.legend_bbox, fontsize=self.fontsize)
             else:
                 legend = ax.legend()
             if self.legend_alpha and legend is not None:
@@ -230,14 +246,20 @@ class PlotCommand(Command):
             plt.show()
         plt.clf()
 
-    def pickle_name(self, i):
-        return self.file_name().replace(
-            '.png', '-%d.pdy' % i).replace(
+    def pickle_name(self, i, key=''):
+        ret = self.file_name().replace(
+            '.png', '-%s%d.pdy' % (key, i)).replace(
             'plot', 'plot_data')
+        dest_dir = os.path.dirname(ret)
+        if not os.path.exists(dest_dir):
+            os.makedirs(dest_dir)
+        return ret
 
     def file_name(self):
         if self.options.answers == DATA_DIR + 'answers.csv':
             dest_dir = PLOT_DIR
+        elif self.options.answers == self.options.data_dir + 'answers.csv':
+            dest_dir = self.options.data_dir.replace('data', PLOT_DIR)
         else:
             dest_dir = PARTIAL_DATA_PLOT_DIR
         if not os.path.exists(dest_dir):
@@ -262,7 +284,12 @@ class PlotCommand(Command):
             for i in range(100):
                 if not os.path.isfile(self.pickle_name(i)):
                     break
-                data.append([pd.read_pickle(self.pickle_name(i)), ''])
+                part = [pd.read_pickle(self.pickle_name(i)), '']
+                if os.path.isfile(self.pickle_name(i, 'title')):
+                    part[1] = file_get_contents(self.pickle_name(i, 'title'))
+                if os.path.isfile(self.pickle_name(i, 'deviations')):
+                    part.append(pd.read_pickle(self.pickle_name(i, 'deviations')))
+                data.append(part)
         else:
             data = self.get_data()
         self.generate_graph(data)
@@ -312,6 +339,16 @@ class PlotCommand(Command):
 
     def get_data(self):
         pass
+
+
+def file_get_contents(filename):
+    with open(filename) as f:
+            return f.read()
+
+
+def file_set_contents(filename, text):
+    with open(filename,'w') as f:
+        f.write(text)
 
 
 class DivisionCommand(PlotCommand):
@@ -1971,7 +2008,6 @@ class RatingByContextAb(DivisionCommand):
     def get_data(self):
         ratings = load_data.get_rating_with_maps(self.options)
         ratings['Context'] = ratings['context_name'] + ' - ' + ratings['term_type']
-        print ratings
         top_contexts = ratings.groupby('Context').count()[['inserted']].sort(
             ['inserted'], ascending=[False]).head(12).reset_index()['Context'].tolist()
         data = []
@@ -2597,3 +2633,133 @@ class AnswersToRatingsRatio(PlotCommand):
         grouped.rename(index=AB_VALUES_SHORT, inplace=True)
         grouped.sort_index(inplace=True)
         return grouped
+
+
+class SurvivalByContextAb(PlotCommand):
+    kind = 'barh'
+    subplot_x_dim = 3
+    subplot_legend_index = 2
+    subplots_adjust = dict(
+        left=0.3,
+    )
+    # legend_loc = 'upper right'
+    legend_bbox = (1.6, 1.0)
+
+    xlim = [
+        None,
+        (0, 0.8),
+        (0, 0.25),
+    ]
+    xticks = [
+        np.arange(0, 300, 100),
+        np.arange(0, 1, 0.5),
+        np.arange(0, 1, 0.2),
+    ]
+    figsize = (10, 5)
+
+    def get_context_size(self, top_contexts):
+        flashcards = load_data.get_flashcards(self.options)
+        flashcards = flashcards.drop_duplicates(['Context'])
+        flashcards = flashcards[flashcards['Context'].isin(top_contexts)]
+        grouped = flashcards[['Context', 'context_item_count']].set_index(['Context'])
+        for i in range(1):
+            grouped[chr(ord('c') + i - 1)] = grouped['context_item_count'].apply(lambda x: 0)
+        grouped.index.names = ['']
+        return grouped
+
+    def get_error_rate(self, answers, top_contexts_removal, data):
+        grouped = answers.groupby(['experiment_setup_id', 'Context']).mean()
+        grouped['Error rate'] = grouped['correct'].apply(lambda x: 1 - x)
+        grouped = grouped[['Error rate']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='Context',
+            columns='experiment_setup_id',
+            values='Error rate')
+        grouped['context_size'] = self.data[0][0]['context_item_count']
+        grouped.sort(['context_size'], ascending=True, inplace=True)
+        grouped.drop(['context_size'], inplace=True, axis=1, errors='ignore')
+        grouped.index.names = ['']
+        grouped.rename(index=top_contexts_removal, inplace=True)
+        return grouped
+
+    def add_bootstrap(self, answers_grouped, trials):
+        grouped = answers_grouped.reset_index()
+        grouped = grouped.groupby(['experiment_setup_id', 'Context'])
+        bootstrapped = None
+        for name, group in grouped:
+            for i in range(trials):
+                group['val%d' % i] = bootstrap_resample(np.array(group['id']))
+            if bootstrapped is None:
+                bootstrapped = group
+            else:
+                bootstrapped = bootstrapped.append(group)
+        return bootstrapped
+
+    def pivotize(self, grouped, values):
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='Context',
+            columns='experiment_setup_id',
+            values=values)
+        grouped.rename(columns=AB_VALUES_SHORT, inplace=True)
+        grouped['context_size'] = self.data[0][0]['context_item_count']
+        grouped.sort(['context_size'], ascending=True, inplace=True)
+        grouped.drop(['context_size'], inplace=True, axis=1, errors='ignore')
+        grouped.rename(index=self.top_contexts_removal, inplace=True)
+        grouped.index.names = ['']
+        return grouped
+
+    def get_data(self):
+        answers_grouped = load_data.get_answer_counts_top_10_contexts(self.options)
+        top_contexts = answers_grouped.reset_index()['Context'].tolist()
+        self.top_contexts_removal = dict([(c, '') for c in top_contexts])
+        self.data = []
+
+        self.data.append([self.get_context_size(top_contexts), '# of items'])
+
+        thresholds = [10, 100]
+        trials = 200
+        for threshold in thresholds:
+            grouped_all = self.add_bootstrap(answers_grouped, trials)
+            grouped_all['Survived'] = grouped_all['id'].apply(lambda x: x > threshold)
+            for i in range(trials):
+                grouped_all['val%d' % i] = grouped_all['val%d' % i].apply(lambda x: x > threshold)
+            grouped_all = grouped_all.reset_index()
+            grouped = grouped_all.groupby(['Context', 'experiment_setup_id']).mean()
+            grouped['low'] = grouped['val0'].apply(lambda x: -1.0)
+            grouped['high'] = grouped['val0'].apply(lambda x: -1.0)
+            transposed = grouped[['val%d' % i for i in range(trials)]].transpose()
+            for c in transposed.columns:
+                ordered = transposed[c].order()
+                grouped = grouped.set_value(c, 'low', ordered.quantile(0.025))
+                grouped = grouped.set_value(c, 'high', ordered.quantile(0.975))
+            grouped['error'] = (grouped['high'] - grouped['low']) / 2.0
+            grouped = grouped[['Survived', 'error']]
+            result_table = self.pivotize(grouped, 'Survived')
+            errors_table = self.pivotize(grouped, 'error')
+            self.data.append([result_table, '%d answers\n survival' % threshold, errors_table])
+
+        self.data[0][0].sort(['context_item_count'], ascending=True, inplace=True)
+        return self.data
+
+
+def bootstrap_resample(X, n=None):
+    """ Bootstrap resample an array_like
+    Parameters
+    ----------
+    X : array_like
+      data to resample
+    n : int, optional
+      length of resampled array, equal to len(X) if n==None
+    Results
+    -------
+    returns X_resamples
+    """
+    if n is None:
+        n = len(X)
+
+    resample_i = np.floor(np.random.rand(n) * len(X)).astype(int)
+    X_resample = X[resample_i]
+    X_resample = X[resample_i]
+    return X_resample
