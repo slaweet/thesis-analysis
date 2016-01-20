@@ -13,11 +13,19 @@ import random
 import bisect
 import seaborn as sns
 import os
+import numpy as np
 
 
 sns.set_style("whitegrid", {
     'legend.frameon': True,
 })
+grays = [
+    "#dbdbdb",
+    "#929292",
+    "#b6b6b6",
+    "#6d6d6d",
+]
+sns.set_palette(sns.color_palette(grays))
 
 
 DATA_DIR = 'data/'
@@ -55,25 +63,27 @@ RATING_VALUES = {
 }
 
 AB_VALUES = {
+    0: 'No A/B experiment',
     6: 'Random-Adaptive',
     7: 'Random-Random',
     8: 'Adaptive-Adaptive',
     9: 'Adaptive-Random',
     14: '50%',
-    15: '65%',
-    16: '80%',
-    17: '95%',
+    15: '35%',
+    16: '20%',
+    17: '5%',
 }
 
 AB_VALUES_SHORT = {
+    0: 'NoAB',
     6: 'R-A',
     7: 'R-R',
     8: 'A-A',
     9: 'A-R',
     14: '50%',
-    15: '65%',
-    16: '80%',
-    17: '95%',
+    15: '35%',
+    16: '20%',
+    17: '5%',
 }
 
 
@@ -106,6 +116,7 @@ class PlotCommand(Command):
     adjust_hspace = None
     adjust_right = 0.95
     legend_alpha = False
+    legend_ncol = 1
     ylim = None
     xlim = None
     legend_loc = None
@@ -129,6 +140,9 @@ class PlotCommand(Command):
     subplots_first = 1
     subplot_legend_index = 0
     xticks = None
+    ecolor = None
+    width = None
+    hatches = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -166,6 +180,11 @@ class PlotCommand(Command):
                 c=self.scatter_c,
                 # s=20,
                 # marker='+',
+            ))
+        if self.width is not None:
+            plot_params.update(dict(
+                width=(self.width[subplot_index] if
+                       type(self.width) is list else self.width),
             ))
         return plot_params
 
@@ -221,6 +240,7 @@ class PlotCommand(Command):
                 deviations = data_list[i][2]
                 plot_params.update(dict(
                     xerr=deviations,
+                    ecolor=self.ecolor,
                 ))
                 deviations.to_pickle(self.pickle_name(i, 'deviations'))
                 print 'ERRORS', data_list[i][2]
@@ -228,12 +248,26 @@ class PlotCommand(Command):
             data.plot(**plot_params)
             data.to_pickle(self.pickle_name(i))
 
+            if self.hatches is not None and (
+                    type(self.hatches) is not list or self.hatches[i]):
+                bars = ax.patches
+                HATCHES = ['//', '', '\\\\', '/', '\\', '.', '*', 'O', '-', '+', 'x', 'o']
+
+                for j in range(len(bars)):
+                        bars[j].set_hatch(HATCHES[:4][::-1][j / len(data)])
+
             if self.legend is False:
                 pass
             elif self.legend_loc is not None:
-                legend = ax.legend(loc=self.legend_loc, fontsize=self.fontsize)
+                legend = ax.legend(
+                    loc=self.legend_loc,
+                    fontsize=self.fontsize,
+                    ncol=self.legend_ncol)
             elif self.legend_bbox is not None:
-                legend = ax.legend(bbox_to_anchor=self.legend_bbox, fontsize=self.fontsize)
+                legend = ax.legend(
+                    bbox_to_anchor=self.legend_bbox,
+                    fontsize=self.fontsize,
+                    ncol=self.legend_ncol)
             else:
                 legend = ax.legend()
             if self.legend_alpha and legend is not None:
@@ -2637,23 +2671,30 @@ class AnswersToRatingsRatio(PlotCommand):
 
 class SurvivalByContextAb(PlotCommand):
     kind = 'barh'
-    subplot_x_dim = 3
-    subplot_legend_index = 2
+    subplot_x_dim = 4
+    subplot_legend_index = 3
     subplots_adjust = dict(
-        left=0.3,
+        left=0.17,
+        right=0.99,
+        top=0.86,
     )
-    # legend_loc = 'upper right'
-    legend_bbox = (1.6, 1.0)
+    legend_bbox = (1.06, 1.2)
+    legend_ncol = 4
+    ecolor = '#333333'
+    width = [0.5, 0.8, 0.8, 0.8]
+    hatches = [False, True, True, True]
 
     xlim = [
-        None,
-        (0, 0.8),
+        (0, 199),
+        (0, 0.85),
+        (0, 0.25),
         (0, 0.25),
     ]
     xticks = [
-        np.arange(0, 300, 100),
-        np.arange(0, 1, 0.5),
-        np.arange(0, 1, 0.2),
+        np.arange(0, 300, 50),
+        np.arange(0, 1, 0.3),
+        np.arange(0, 1, 0.1),
+        np.arange(0, 1, 0.1),
     ]
     figsize = (10, 5)
 
@@ -2662,8 +2703,6 @@ class SurvivalByContextAb(PlotCommand):
         flashcards = flashcards.drop_duplicates(['Context'])
         flashcards = flashcards[flashcards['Context'].isin(top_contexts)]
         grouped = flashcards[['Context', 'context_item_count']].set_index(['Context'])
-        for i in range(1):
-            grouped[chr(ord('c') + i - 1)] = grouped['context_item_count'].apply(lambda x: 0)
         grouped.index.names = ['']
         return grouped
 
@@ -2683,18 +2722,28 @@ class SurvivalByContextAb(PlotCommand):
         grouped.rename(index=top_contexts_removal, inplace=True)
         return grouped
 
-    def add_bootstrap(self, answers_grouped, trials):
+    def add_bootstrap(self, answers_grouped, trials, group_by, value_name):
         grouped = answers_grouped.reset_index()
-        grouped = grouped.groupby(['experiment_setup_id', 'Context'])
+        grouped = grouped.groupby(group_by)
         bootstrapped = None
         for name, group in grouped:
             for i in range(trials):
-                group['val%d' % i] = bootstrap_resample(np.array(group['id']))
+                group['val%d' % i] = bootstrap_resample(np.array(group[value_name]))
             if bootstrapped is None:
                 bootstrapped = group
             else:
                 bootstrapped = bootstrapped.append(group)
-        return bootstrapped
+        bootstrapped = bootstrapped.reset_index()
+        grouped = bootstrapped.groupby(group_by).mean()
+        grouped['low'] = grouped['val0'].apply(lambda x: -1.0)
+        grouped['high'] = grouped['val0'].apply(lambda x: -1.0)
+        transposed = grouped[['val%d' % i for i in range(trials)]].transpose()
+        for c in transposed.columns:
+            ordered = transposed[c].order()
+            grouped = grouped.set_value(c, 'low', ordered.quantile(0.025))
+            grouped = grouped.set_value(c, 'high', ordered.quantile(0.975))
+        grouped['error'] = (grouped['high'] - grouped['low']) / 2.0
+        return grouped
 
     def pivotize(self, grouped, values):
         grouped = grouped.reset_index()
@@ -2712,33 +2761,31 @@ class SurvivalByContextAb(PlotCommand):
 
     def get_data(self):
         answers_grouped = load_data.get_answer_counts_top_10_contexts(self.options)
-        top_contexts = answers_grouped.reset_index()['Context'].tolist()
+        top_contexts = answers_grouped.reset_index()['Context'].unique().tolist()
         self.top_contexts_removal = dict([(c, '') for c in top_contexts])
         self.data = []
 
         self.data.append([self.get_context_size(top_contexts), '# of items'])
 
         thresholds = [10, 100]
-        trials = 200
+        trials = 100 if self.options.production else 2
         for threshold in thresholds:
-            grouped_all = self.add_bootstrap(answers_grouped, trials)
+            grouped_all = answers_grouped
             grouped_all['Survived'] = grouped_all['id'].apply(lambda x: x > threshold)
-            for i in range(trials):
-                grouped_all['val%d' % i] = grouped_all['val%d' % i].apply(lambda x: x > threshold)
-            grouped_all = grouped_all.reset_index()
-            grouped = grouped_all.groupby(['Context', 'experiment_setup_id']).mean()
-            grouped['low'] = grouped['val0'].apply(lambda x: -1.0)
-            grouped['high'] = grouped['val0'].apply(lambda x: -1.0)
-            transposed = grouped[['val%d' % i for i in range(trials)]].transpose()
-            for c in transposed.columns:
-                ordered = transposed[c].order()
-                grouped = grouped.set_value(c, 'low', ordered.quantile(0.025))
-                grouped = grouped.set_value(c, 'high', ordered.quantile(0.975))
-            grouped['error'] = (grouped['high'] - grouped['low']) / 2.0
+            grouped = self.add_bootstrap(
+                grouped_all, trials, ['Context', 'experiment_setup_id'], 'Survived')
             grouped = grouped[['Survived', 'error']]
             result_table = self.pivotize(grouped, 'Survived')
             errors_table = self.pivotize(grouped, 'error')
-            self.data.append([result_table, '%d answers\n survival' % threshold, errors_table])
+            self.data.append([result_table, '%d answers survival' % threshold, errors_table])
+
+        users_returning = load_data.get_users_returning_after_10_hours(self.options)
+        grouped = self.add_bootstrap(
+            users_returning, trials, ['Context', 'experiment_setup_id'], 'Survived')
+        grouped = grouped[['Survived', 'error']]
+        result_table = self.pivotize(grouped, 'Survived')
+        errors_table = self.pivotize(grouped, 'error')
+        self.data.append([result_table, 'Return probability', errors_table])
 
         self.data[0][0].sort(['context_item_count'], ascending=True, inplace=True)
         return self.data

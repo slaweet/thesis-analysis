@@ -9,6 +9,24 @@ import bisect
 
 RATING_INTERVALS = [30, 70, 120, 200]
 
+TERM_TYPES = {
+    0: 'unknown',
+    'state': 'countries',
+    'city': 'cities',
+    3: 'world',
+    4: 'continent',
+    'river': 'rivers',
+    6: 'lake',
+    'region_cz': 'regions',
+    8: 'bundesland',
+    9: 'province',
+    10: 'region_it',
+    11: 'region',
+    12: 'autonumous_comunity',
+    13: 'mountains',
+    14: 'island'
+}
+
 
 def get_cached(fn):
     directory = '.cache'
@@ -97,6 +115,32 @@ def get_answers_with_flashcards_and_context_orders(options):
     answers_with_flashcards['answer_order'] = pd.Series(
         answer_orders, index=answers_with_flashcards.index)
     return answers_with_flashcards
+
+
+@get_cached
+def get_users_returning_after_10_hours(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    top_contexts = answers.groupby('Context').count()[['id']].sort(
+        ['id'], ascending=[False]).head(10).reset_index()['Context'].tolist()
+    answers = answers[answers['Context'].isin(top_contexts)]
+    grouped_first = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).first()
+    grouped = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).last()
+    grouped['time_first'] = grouped_first['time'].apply(lambda x: pd.to_datetime(x))
+    grouped['time_last'] = grouped['time'].apply(lambda x: pd.to_datetime(x))
+    grouped['Survived'] = (grouped['time_last'] - grouped['time_first']) > pd.Timedelta('10 hours')
+    grouped = grouped[['Survived']]
+    return grouped
+
+
+@get_cached
+def get_answer_counts_top_10_contexts(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    top_contexts = answers.groupby('Context').count()[['id']].sort(
+        ['id'], ascending=[False]).head(10).reset_index()['Context'].tolist()
+    answers = answers[answers['Context'].isin(top_contexts)]
+    grouped = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).count()
+    grouped = grouped[['id']]
+    return grouped
 
 
 @get_cached
@@ -213,6 +257,8 @@ def get_answers_with_flashcards(options):
 
 def get_flashcards(options):
     flashcards = read_csv(options.data_dir + 'flashcards.csv')
+    flashcards['term_type'].fillna('', inplace=True)
+    # flashcards['term_type'] = flashcards['term_type'].apply(lambda x: TERM_TYPES.get(x,x))
     contexts = flashcards.groupby(['context_name', 'term_type']).count()
     contexts = contexts[['item_id']]
     contexts = contexts.reset_index()
@@ -227,6 +273,23 @@ def get_flashcards(options):
         left_on=['context_name', 'term_type'],
         right_on=['context_name', 'term_type'],
     )
+    flashcards['Context'] = flashcards['context_name'] + ', ' + flashcards['term_type']
+    flashcards = rename_contexts(flashcards)
+    return flashcards
+
+
+def rename_contexts(flashcards):
+    def multipleReplace(text, wordDict):
+        for key in wordDict:
+            text = text.replace(key, wordDict[key])
+        return text
+
+    context_replacements = {
+        'Czech Rep.': 'CZ',
+        'United States': 'US',
+    }
+    flashcards['Context'] = flashcards['Context'].apply(
+        lambda x: multipleReplace(x, context_replacements))
     return flashcards
 
 
