@@ -11,11 +11,11 @@ RATING_INTERVALS = [30, 70, 120, 200]
 
 TERM_TYPES = {
     0: 'unknown',
-    'state': 'countries',
-    'city': 'cities',
+    'state': 'state',
+    'city': 'city',
     3: 'world',
     4: 'continent',
-    'river': 'rivers',
+    'river': 'river',
     6: 'lake',
     'region_cz': 'regions',
     8: 'bundesland',
@@ -258,7 +258,7 @@ def get_answers_with_flashcards(options):
 def get_flashcards(options):
     flashcards = read_csv(options.data_dir + 'flashcards.csv')
     flashcards['term_type'].fillna('', inplace=True)
-    # flashcards['term_type'] = flashcards['term_type'].apply(lambda x: TERM_TYPES.get(x,x))
+    flashcards['term_type'] = flashcards['term_type'].apply(lambda x: TERM_TYPES.get(x,x))
     contexts = flashcards.groupby(['context_name', 'term_type']).count()
     contexts = contexts[['item_id']]
     contexts = contexts.reset_index()

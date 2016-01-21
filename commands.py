@@ -21,8 +21,8 @@ sns.set_style("whitegrid", {
 })
 grays = [
     "#dbdbdb",
-    "#929292",
     "#b6b6b6",
+    "#929292",
     "#6d6d6d",
 ]
 sns.set_palette(sns.color_palette(grays))
@@ -258,18 +258,25 @@ class PlotCommand(Command):
 
             if self.legend is False:
                 pass
-            elif self.legend_loc is not None:
-                legend = ax.legend(
-                    loc=self.legend_loc,
-                    fontsize=self.fontsize,
-                    ncol=self.legend_ncol)
-            elif self.legend_bbox is not None:
-                legend = ax.legend(
-                    bbox_to_anchor=self.legend_bbox,
-                    fontsize=self.fontsize,
-                    ncol=self.legend_ncol)
             else:
-                legend = ax.legend()
+                legend_params = dict(
+                    fontsize=self.fontsize,
+                    ncol=self.legend_ncol,
+                )
+                if self.legend_loc is not None:
+                    legend_params.update(dict(
+                        loc=self.legend_loc,
+                    ))
+                elif self.legend_bbox is not None:
+                    legend_params.update(dict(
+                        bbox_to_anchor=self.legend_bbox,
+                    ))
+                reverse = -1 if self.kind == 'barh' else 1
+
+                handles, labels = ax.get_legend_handles_labels()
+                legend = ax.legend(handles[::reverse], labels[::reverse], **legend_params)
+                # legend = ax.legend(**legend_params)
+
             if self.legend_alpha and legend is not None:
                 legend.get_frame().set_alpha(0.8)
 
@@ -2682,7 +2689,6 @@ class SurvivalByContextAb(PlotCommand):
     legend_ncol = 4
     ecolor = '#333333'
     width = [0.5, 0.8, 0.8, 0.8]
-    hatches = [False, True, True, True]
 
     xlim = [
         (0, 199),
@@ -2721,6 +2727,17 @@ class SurvivalByContextAb(PlotCommand):
         grouped.index.names = ['']
         grouped.rename(index=top_contexts_removal, inplace=True)
         return grouped
+
+    def add_binomial_confidence(self, answers_grouped, group_by, value_name):
+        grouped = answers_grouped.reset_index()
+        grouped = grouped[group_by + [value_name]]
+        grouped = grouped.groupby(group_by)
+        aggregated = grouped.mean()
+        aggregated['val'] = grouped.apply(binomial_confidence_mean)
+        aggregated[value_name] = aggregated['val'].apply(lambda x: x[0][1])
+        aggregated['error'] = aggregated['val'].apply(lambda x: x[1][1])
+        aggregated = aggregated[[value_name, 'error']]
+        return aggregated
 
     def add_bootstrap(self, answers_grouped, trials, group_by, value_name):
         grouped = answers_grouped.reset_index()
@@ -2765,27 +2782,28 @@ class SurvivalByContextAb(PlotCommand):
         self.top_contexts_removal = dict([(c, '') for c in top_contexts])
         self.data = []
 
-        self.data.append([self.get_context_size(top_contexts), '# of items'])
+        self.data.append([self.get_context_size(top_contexts), 'A) # of items'])
 
         thresholds = [10, 100]
-        trials = 100 if self.options.production else 2
         for threshold in thresholds:
             grouped_all = answers_grouped
             grouped_all['Survived'] = grouped_all['id'].apply(lambda x: x > threshold)
-            grouped = self.add_bootstrap(
-                grouped_all, trials, ['Context', 'experiment_setup_id'], 'Survived')
+            grouped = self.add_binomial_confidence(
+                grouped_all, ['Context', 'experiment_setup_id'], 'Survived')
             grouped = grouped[['Survived', 'error']]
             result_table = self.pivotize(grouped, 'Survived')
             errors_table = self.pivotize(grouped, 'error')
-            self.data.append([result_table, '%d answers survival' % threshold, errors_table])
+            label = ('%s) %d answers survival' %
+                     ({10: 'B', 100: 'C'}[threshold], threshold))
+            self.data.append([result_table, label, errors_table])
 
         users_returning = load_data.get_users_returning_after_10_hours(self.options)
-        grouped = self.add_bootstrap(
-            users_returning, trials, ['Context', 'experiment_setup_id'], 'Survived')
+        grouped = self.add_binomial_confidence(
+            users_returning, ['Context', 'experiment_setup_id'], 'Survived')
         grouped = grouped[['Survived', 'error']]
         result_table = self.pivotize(grouped, 'Survived')
         errors_table = self.pivotize(grouped, 'error')
-        self.data.append([result_table, 'Return probability', errors_table])
+        self.data.append([result_table, 'D) Return probability', errors_table])
 
         self.data[0][0].sort(['context_item_count'], ascending=True, inplace=True)
         return self.data
@@ -2810,3 +2828,9 @@ def bootstrap_resample(X, n=None):
     X_resample = X[resample_i]
     X_resample = X[resample_i]
     return X_resample
+
+
+def binomial_confidence_mean(xs, z=1.96):
+    mean = np.mean(xs)
+    confidence = z * np.sqrt((mean * (1 - mean)) / len(xs))
+    return mean, confidence
