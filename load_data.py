@@ -144,6 +144,25 @@ def get_answer_counts_top_10_contexts(options):
 
 
 @get_cached
+def get_answer_counts(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    grouped = answers.groupby(['Context']).count()
+    grouped = grouped[['id']]
+    grouped.columns = ['answer_count']
+    return grouped
+
+
+@get_cached
+def get_error_rate_per_contexts(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    answers = answers[answers['metainfo_id'] != 1]
+    grouped = answers.groupby(['experiment_setup_id', 'Context']).mean()
+    grouped['Error rate'] = grouped['correct'].apply(lambda x: 1 - x)
+    grouped = grouped[['Error rate']]
+    return grouped
+
+
+@get_cached
 def get_rating_with_maps(options):
     ratings = get_rating(options)
     ratings['answer_order'] = ratings['rating_order'].map(lambda x: RATING_INTERVALS[x - 1])
@@ -164,6 +183,24 @@ def get_rating_with_rolling_success(options):
     ratings['answer_order'] = ratings['rating_order'].map(lambda x: RATING_INTERVALS[x - 1])
     answers = get_answers_with_flashcards_and_orders(options)
     answers['rolling_success'] = sum([answers['correct'].shift(i) for i in range(10)]) / 10.0
+
+    ratings_with_maps = pd.merge(
+        ratings,
+        answers,
+        left_on=['user_id', 'answer_order'],
+        right_on=['user_id', 'answer_order'],
+    )
+    return ratings_with_maps
+
+
+@get_cached
+def get_rating_with_rolling_response_time(options):
+    ratings = get_rating(options)
+    ratings['answer_order'] = ratings['rating_order'].map(lambda x: RATING_INTERVALS[x - 1])
+    answers = get_answers_with_flashcards_and_orders(options)
+    answers = answers[answers['response_time'] > 0]
+    answers = answers[answers['response_time'] < 30000]
+    answers['rolling_response_time'] = sum([answers['response_time'].shift(i) for i in range(10)]) / 10.0
 
     ratings_with_maps = pd.merge(
         ratings,
