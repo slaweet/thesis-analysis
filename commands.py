@@ -1384,38 +1384,72 @@ class ErrorRateByAnswerOrderByContext(AnswerOrder):
 
 
 class ErrorRateBySetOrderByContext(AnswerOrder):
-    adjust_bottom = 0.2
-    legend_alpha = True
-    legend_loc = 'upper right'
     subplots_adjust = dict(
-        wspace=0.5,
-        hspace=0.3,
+        wspace=0.19,
+        hspace=0.45,
+        right=0.86,
+        left=0.08,
+        bottom=0.22,
     )
     ylim = [0, 0.6]
     marker = '+'
-    figsize = (20, 15)
+    figsize = (8, 2.3)
+    grid = False
+    legend_loc = None  # 'upper right'
+    legend_bbox = (2.1, 2.1)
+    legend_reverse = True
+    subplot_x_dim = 5
+    ylabel = [
+        "Error rate",
+        None,
+        None,
+        None,
+        None,
+        "Error rate",
+        None,
+        None,
+        None,
+        None,
+    ]
+    xticks = np.arange(0, 9, 2)
+    yticks = [
+        np.arange(0, 1, 0.2),
+        np.arange(-1, 1, 2),
+        np.arange(-1, 1, 2),
+        np.arange(-1, 1, 2),
+        np.arange(-1, 1, 2),
+        np.arange(0, 1, 0.2),
+        np.arange(-1, 1, 2),
+        np.arange(-1, 1, 2),
+        np.arange(-1, 1, 2),
+        np.arange(-1, 1, 2),
+    ]
+    subplot_legend_index = 9
+    fontsize = 14
+    legend_fontsize = 12
 
     def get_data(self):
         answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
         answers = answers[answers['metainfo_id'] != 1]
-        answers['set_order'] = answers['answer_order'].apply(lambda x: x / 10)
-        answers['Context'] = answers['context_name'] + ' - ' + answers['term_type']
+        answers['Set order'] = answers['answer_order'].apply(lambda x: x / 10)
         top_contexts = answers.groupby('Context').count()[['id']].sort(
-            ['id'], ascending=[False]).head(12).reset_index()['Context'].tolist()
-        answers = answers[answers['set_order'] <= 10]
+            ['id'], ascending=[False]).head(10).reset_index()['Context'].tolist()
+        answers = answers[answers['Set order'] <= 9]
         data = []
+        # hack_contexts = ['Europe, state', 'World, state', 'CZ, city']
+        # top_contexts = hack_contexts
         for context in top_contexts:
             answers_on_context = answers[answers['Context'] == context]
-            grouped = answers_on_context.groupby(['set_order', 'experiment_setup_id']).mean()
+            grouped = answers_on_context.groupby(['Set order', 'experiment_setup_id']).mean()
             grouped['error_rate'] = 1 - grouped['correct']
             grouped = grouped[['error_rate']]
             grouped = grouped.reset_index()
+            grouped.sort(['experiment_setup_id'], ascending=True, inplace=True)
             grouped = grouped.pivot(
-                index='set_order',
+                index='Set order',
                 columns='experiment_setup_id',
                 values='error_rate')
-            grouped.columns = [AB_VALUES_SHORT[i] for i in grouped.columns]
-            grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+            grouped.columns = [AB_VALUES_SHORT.get(i, i) for i in grouped.columns]
             data.append([grouped, context])
         return data
 
