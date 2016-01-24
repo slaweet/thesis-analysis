@@ -2738,8 +2738,8 @@ class AnswersToRatingsRatio(PlotCommand):
 
 class SurvivalByContextAb(PlotCommand):
     kind = 'barh'
-    subplot_x_dim = 4
-    subplot_legend_index = 3
+    subplot_x_dim = 3
+    subplot_legend_index = 2
     subplots_adjust = dict(
         left=0.17,
         right=0.99,
@@ -2748,45 +2748,22 @@ class SurvivalByContextAb(PlotCommand):
     legend_bbox = (1.06, 1.2)
     legend_ncol = 4
     ecolor = '#333333'
-    width = [0.5, 0.8, 0.8, 0.8]
+    width = [0.8, 0.8, 0.8]
 
     xlim = [
-        (0, 199),
         (0, 0.85),
-        (0, 0.25),
-        (0, 0.25),
+        (0, 0.27),
+        (0, 0.27),
     ]
     xticks = [
-        np.arange(0, 300, 50),
-        np.arange(0, 1, 0.3),
+        np.arange(0, 1, 0.2),
         np.arange(0, 1, 0.1),
         np.arange(0, 1, 0.1),
     ]
-    figsize = (10, 5)
+    figsize = (8, 4.5)
+    grid = False
+    fontsize = 12
 
-    def get_context_size(self, top_contexts):
-        flashcards = load_data.get_flashcards(self.options)
-        flashcards = flashcards.drop_duplicates(['Context'])
-        flashcards = flashcards[flashcards['Context'].isin(top_contexts)]
-        grouped = flashcards[['Context', 'context_item_count']].set_index(['Context'])
-        grouped.index.names = ['']
-        return grouped
-
-    def get_error_rate(self, answers, top_contexts_removal, data):
-        grouped = answers.groupby(['experiment_setup_id', 'Context']).mean()
-        grouped['Error rate'] = grouped['correct'].apply(lambda x: 1 - x)
-        grouped = grouped[['Error rate']]
-        grouped = grouped.reset_index()
-        grouped = grouped.pivot(
-            index='Context',
-            columns='experiment_setup_id',
-            values='Error rate')
-        grouped['context_size'] = self.data[0][0]['context_item_count']
-        grouped.sort(['context_size'], ascending=True, inplace=True)
-        grouped.drop(['context_size'], inplace=True, axis=1, errors='ignore')
-        grouped.index.names = ['']
-        grouped.rename(index=top_contexts_removal, inplace=True)
-        return grouped
 
     def add_binomial_confidence(self, answers_grouped, group_by, value_name):
         grouped = answers_grouped.reset_index()
@@ -2822,27 +2799,33 @@ class SurvivalByContextAb(PlotCommand):
         grouped['error'] = (grouped['high'] - grouped['low']) / 2.0
         return grouped
 
-    def pivotize(self, grouped, values):
+    def pivotize(self, grouped, values, remove_labels=False):
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='Context',
             columns='experiment_setup_id',
             values=values)
         grouped.rename(columns=AB_VALUES_SHORT, inplace=True)
-        grouped['context_size'] = self.data[0][0]['context_item_count']
-        grouped.sort(['context_size'], ascending=True, inplace=True)
-        grouped.drop(['context_size'], inplace=True, axis=1, errors='ignore')
-        grouped.rename(index=self.top_contexts_removal, inplace=True)
+        grouped = self.sort_by_answer_count(grouped)
+        if remove_labels:
+            grouped.rename(index=self.top_contexts_removal, inplace=True)
         grouped.index.names = ['']
+        return grouped
+
+    def sort_by_answer_count(self, grouped):
+        grouped.reset_index(inplace=True)
+        grouped['context_order'] = grouped['Context'].apply(lambda x: self.contexts_order[x])
+        grouped.sort('context_order', inplace=True, ascending=False)
+        grouped.drop('context_order', inplace=True, axis=1)
+        grouped.set_index(['Context'], inplace=True)
         return grouped
 
     def get_data(self):
         answers_grouped = load_data.get_answer_counts_top_10_contexts(self.options)
-        top_contexts = answers_grouped.reset_index()['Context'].unique().tolist()
+        top_contexts = answers_grouped.reset_index().sort(['answer_count'], ascending=False)['Context'].unique().tolist()
+        self.contexts_order = dict(zip(top_contexts, range(len(top_contexts))))
         self.top_contexts_removal = dict([(c, '') for c in top_contexts])
         self.data = []
-
-        self.data.append([self.get_context_size(top_contexts), 'A) # of items'])
 
         thresholds = [10, 100]
         for threshold in thresholds:
@@ -2851,21 +2834,20 @@ class SurvivalByContextAb(PlotCommand):
             grouped = self.add_binomial_confidence(
                 grouped_all, ['Context', 'experiment_setup_id'], 'Survived')
             grouped = grouped[['Survived', 'error']]
-            result_table = self.pivotize(grouped, 'Survived')
-            errors_table = self.pivotize(grouped, 'error')
+            result_table = self.pivotize(grouped, 'Survived', remove_labels=threshold == 100)
+            errors_table = self.pivotize(grouped, 'error', remove_labels=threshold == 100)
             label = ('%s) %d answers survival' %
-                     ({10: 'B', 100: 'C'}[threshold], threshold))
+                     ({10: 'A', 100: 'B'}[threshold], threshold))
             self.data.append([result_table, label, errors_table])
 
         users_returning = load_data.get_users_returning_after_10_hours(self.options)
         grouped = self.add_binomial_confidence(
             users_returning, ['Context', 'experiment_setup_id'], 'Survived')
         grouped = grouped[['Survived', 'error']]
-        result_table = self.pivotize(grouped, 'Survived')
-        errors_table = self.pivotize(grouped, 'error')
-        self.data.append([result_table, 'D) Return probability', errors_table])
+        result_table = self.pivotize(grouped, 'Survived', remove_labels=True)
+        errors_table = self.pivotize(grouped, 'error', remove_labels=True)
+        self.data.append([result_table, 'C) return probability', errors_table])
 
-        self.data[0][0].sort(['context_item_count'], ascending=True, inplace=True)
         return self.data
 
 
