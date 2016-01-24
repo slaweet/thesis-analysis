@@ -2851,6 +2851,84 @@ class SurvivalByContextAb(PlotCommand):
         return self.data
 
 
+class StatsByContextAb(SurvivalByContextAb):
+    kind = 'barh'
+    subplot_x_dim = 3
+    subplot_legend_index = 2
+    subplots_adjust = dict(
+        left=0.17,
+        right=0.99,
+        top=0.83,
+    )
+    legend_bbox = (1.06, 1.25)
+    legend_ncol = 4
+    width = [0.5, 0.5, 0.8]
+
+    xlim = [
+        (0, 22),
+        (0, 180),
+        (0, 49),
+    ]
+    xticks = [
+        np.arange(0, 100, 5),
+        np.arange(0, 300, 50),
+        np.arange(0, 100, 10),
+    ]
+    figsize = (8, 4)
+    grid = False
+    fontsize = 12
+
+    def get_answer_counts(self, top_contexts):
+        grouped = load_data.get_answer_counts(self.options)
+        grouped.reset_index(inplace=True)
+        grouped = grouped[grouped['Context'].isin(top_contexts)]
+        grouped.set_index(['Context'], inplace=True)
+        total_count = float(sum(grouped['answer_count'].tolist()))
+        grouped['answer_count'] = grouped['answer_count'].apply(
+            lambda x: x / total_count * 100)
+        grouped = self.sort_by_answer_count(grouped)
+        grouped.index.names = ['']
+        return grouped
+
+    def get_error_rate(self, top_contexts):
+        grouped = load_data.get_error_rate_per_contexts(self.options)
+        grouped = grouped.reset_index()
+        grouped['Error rate'] = grouped['Error rate'].apply(lambda x: x * 100)
+        grouped = grouped[grouped['Context'].isin(top_contexts)]
+        grouped = grouped.pivot(
+            index='Context',
+            columns='experiment_setup_id',
+            values='Error rate')
+        grouped = self.sort_by_answer_count(grouped)
+        grouped.index.names = ['']
+        grouped.rename(index=self.top_contexts_removal, inplace=True)
+        grouped.rename(columns=AB_VALUES_SHORT, inplace=True)
+        return grouped
+
+    def get_context_size(self, top_contexts):
+        flashcards = load_data.get_flashcards(self.options)
+        flashcards = flashcards.drop_duplicates(['Context'])
+        flashcards = flashcards[flashcards['Context'].isin(top_contexts)]
+        grouped = flashcards[['Context', 'context_item_count']].set_index(['Context'])
+        grouped = self.sort_by_answer_count(grouped)
+        grouped.rename(index=self.top_contexts_removal, inplace=True)
+        grouped.index.names = ['']
+        return grouped
+
+
+    def get_data(self):
+        answers_grouped = load_data.get_answer_counts_top_10_contexts(self.options)
+        top_contexts = answers_grouped.reset_index().sort(['answer_count'], ascending=False)['Context'].unique().tolist()
+        self.contexts_order = dict(zip(top_contexts, range(len(top_contexts))))
+        self.top_contexts_removal = dict([(c, '') for c in top_contexts])
+        self.data = []
+
+        self.data.append([self.get_answer_counts(top_contexts), 'A) Number of answers (%)'])
+        self.data.append([self.get_context_size(top_contexts), 'B) Number of items'])
+        self.data.append([self.get_error_rate(top_contexts), 'C) Error rate (%)'])
+        return self.data
+
+
 def bootstrap_resample(X, n=None):
     """ Bootstrap resample an array_like
     Parameters
