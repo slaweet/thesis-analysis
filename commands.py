@@ -16,7 +16,7 @@ import os
 import numpy as np
 
 
-sns.set_style("whitegrid", {
+sns.set_style("white", {
     'legend.frameon': True,
 })
 grays = [
@@ -140,9 +140,14 @@ class PlotCommand(Command):
     subplots_first = 1
     subplot_legend_index = 0
     xticks = None
+    yticks = None
     ecolor = None
     width = None
     hatches = None
+    grid = None
+    legend_reverse = False
+    ylabel = None
+    legend_fontsize = None
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -160,6 +165,7 @@ class PlotCommand(Command):
             legend=self.legend,
             figsize=self.figsize,
             colormap=self.colormap,
+            grid=self.grid,
         )
         if self.edgecolor is not None:
             plot_params.update(dict(
@@ -197,9 +203,9 @@ class PlotCommand(Command):
         fig = plt.gcf()
 
         for i in range(len(data_list)):
-            data = data_list[i][0]
-            print len(data)
-            print (data.head() if len(data) > 10 else data)
+            df = data_list[i][0]
+            print "DataFrame length:", len(df)
+            print df.head(10)
             plot_params = self.get_plot_params(i)
             if self.subplots_adjust is None:
                 self.subplots_adjust = dict(
@@ -217,6 +223,15 @@ class PlotCommand(Command):
 
             if type(self.xticks) is list:
                 ax.xaxis.set_ticks(self.xticks[i])
+            elif self.xticks is not None:
+                ax.xaxis.set_ticks(self.xticks)
+
+            if type(self.yticks) is list:
+                yticks = self.yticks[i]
+            else:
+                yticks = self.yticks
+            if yticks is not None:
+                ax.yaxis.set_ticks(yticks)
 
             if self.ylim is not None:
                 ax.set_ylim(self.ylim)
@@ -228,9 +243,16 @@ class PlotCommand(Command):
             if xlim is not None:
                 ax.set_xlim(xlim)
 
+            if type(self.ylabel) is list:
+                ylabel = self.ylabel[i]
+            else:
+                ylabel = self.ylabel
+            if ylabel is not None:
+                ax.set_ylabel(ylabel)
+
             if len(data_list) > 1:
                 plot_params.update(dict(
-                    title=data.columns.levels[0][0] if hasattr(data.columns, 'levels') else data_list[i][1],
+                    title=df.columns.levels[0][0] if hasattr(df.columns, 'levels') else data_list[i][1],
                 ))
                 file_set_contents(self.pickle_name(i, 'title'), data_list[i][1])
             plot_params.update(dict(
@@ -245,8 +267,8 @@ class PlotCommand(Command):
                 deviations.to_pickle(self.pickle_name(i, 'deviations'))
                 print 'ERRORS', data_list[i][2]
 
-            data.plot(**plot_params)
-            data.to_pickle(self.pickle_name(i))
+            df.plot(**plot_params)
+            df.to_pickle(self.pickle_name(i))
 
             if self.hatches is not None and (
                     type(self.hatches) is not list or self.hatches[i]):
@@ -254,13 +276,13 @@ class PlotCommand(Command):
                 HATCHES = ['//', '', '\\\\', '/', '\\', '.', '*', 'O', '-', '+', 'x', 'o']
 
                 for j in range(len(bars)):
-                        bars[j].set_hatch(HATCHES[:4][::-1][j / len(data)])
+                        bars[j].set_hatch(HATCHES[:4][::-1][j / len(df)])
 
             if self.legend is False:
                 pass
             else:
                 legend_params = dict(
-                    fontsize=self.fontsize,
+                    fontsize=self.legend_fontsize if self.legend_fontsize is not None else self.fontsize,
                     ncol=self.legend_ncol,
                 )
                 if self.legend_loc is not None:
@@ -271,7 +293,9 @@ class PlotCommand(Command):
                     legend_params.update(dict(
                         bbox_to_anchor=self.legend_bbox,
                     ))
-                reverse = -1 if self.kind == 'barh' else 1
+                if self.kind == 'barh':
+                    self.legend_reverse = True
+                reverse = -1 if self.legend_reverse else 1
 
                 handles, labels = ax.get_legend_handles_labels()
                 legend = ax.legend(handles[::reverse], labels[::reverse], **legend_params)
@@ -325,6 +349,8 @@ class PlotCommand(Command):
             for i in range(100):
                 if not os.path.isfile(self.pickle_name(i)):
                     break
+                if self.options.verbose:
+                    print 'Reading pickle:', self.pickle_name(i)
                 part = [pd.read_pickle(self.pickle_name(i)), '']
                 if os.path.isfile(self.pickle_name(i, 'title')):
                     part[1] = file_get_contents(self.pickle_name(i, 'title'))
