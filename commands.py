@@ -2954,3 +2954,62 @@ def binomial_confidence_mean(xs, z=1.96):
     mean = np.mean(xs)
     confidence = z * np.sqrt((mean * (1 - mean)) / len(xs))
     return mean, confidence
+
+
+class ContextOrder(PlotCommand):
+    adjust_bottom = 0.30
+    legend_loc = 'lower right'
+
+    def get_data(self):
+        def todo(data):
+            data['order'] = data['Context'].apply(lambda x: 1)
+            data['order'] = data['order'].cumsum()
+            return data
+
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        top_contexts = answers.groupby('Context').count()[['id']].sort(
+            ['id'], ascending=[False]).head(10).reset_index()['Context'].tolist()
+        answers = answers[answers['Context'].isin(top_contexts)]
+        uniuque_answers = answers.drop_duplicates(['user_id', 'Context'])
+        context_orders = uniuque_answers.groupby(['user_id']).apply(todo).groupby(['Context'])['order'].mean()
+        return context_orders
+
+
+class FirstAnswerOrderOnContext(PlotCommand):
+    kind = 'barh'
+    figsize = (4, 6)
+    subplots_adjust = dict(
+        left=0.42,
+    )
+    legend_bbox = (1.05, 1.12)
+    grid = False
+    xticks = np.arange(0, 200, 25)
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        top_contexts = answers.groupby('Context').count()[['id']].sort(
+            ['id'], ascending=[False]).head(10).reset_index()
+        top_contexts.columns = ['Context', 'answer_count']
+        answers = answers[answers['Context'].isin(top_contexts['Context'].tolist())]
+        uniuque_answers = answers.drop_duplicates(['user_id', 'Context'])
+        context_orders = uniuque_answers.groupby(['Context'])[['answer_order']].mean()
+        context_orders.reset_index(inplace=True)
+        context_orders = pd.merge(
+            context_orders,
+            top_contexts,
+            on=['Context'],
+        )
+        context_orders.sort(['answer_count'], ascending=True, inplace=True)
+        context_orders.set_index('Context', inplace=True)
+        context_orders = context_orders[['answer_order']]
+        context_orders.columns = ['First answer order']
+        """
+        context_orders = uniuque_answers.groupby(['Context', 'experiment_setup_id'])[['answer_order']].mean()
+        context_orders = context_orders.reset_index()
+        context_orders = context_orders.pivot(
+            index='Context',
+            columns='experiment_setup_id',
+            values='answer_order')
+        context_orders.rename(columns=AB_VALUES_SHORT, inplace=True)
+        """
+        return context_orders
