@@ -17,7 +17,7 @@ TERM_TYPES = {
     4: 'continent',
     'river': 'river',
     6: 'lake',
-    'region_cz': 'regions',
+    'region_cz': 'region',
     8: 'bundesland',
     9: 'province',
     10: 'region_it',
@@ -118,13 +118,25 @@ def get_answers_with_flashcards_and_context_orders(options):
 
 
 @get_cached
-def get_users_returning_after_10_hours(options):
+def get_users_returning_to_context_after_10_hours(options):
     answers = get_answers_with_flashcards_and_context_orders(options)
     top_contexts = answers.groupby('Context').count()[['id']].sort(
         ['id'], ascending=[False]).head(10).reset_index()['Context'].tolist()
     answers = answers[answers['Context'].isin(top_contexts)]
     grouped_first = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).first()
     grouped = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).last()
+    grouped['time_first'] = grouped_first['time'].apply(lambda x: pd.to_datetime(x))
+    grouped['time_last'] = grouped['time'].apply(lambda x: pd.to_datetime(x))
+    grouped['Survived'] = (grouped['time_last'] - grouped['time_first']) > pd.Timedelta('10 hours')
+    grouped = grouped[['Survived']]
+    return grouped
+
+
+@get_cached
+def get_users_returning_after_10_hours(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    grouped_first = answers.groupby(['user_id', 'experiment_setup_id']).first()
+    grouped = answers.groupby(['user_id', 'experiment_setup_id']).last()
     grouped['time_first'] = grouped_first['time'].apply(lambda x: pd.to_datetime(x))
     grouped['time_last'] = grouped['time'].apply(lambda x: pd.to_datetime(x))
     grouped['Survived'] = (grouped['time_last'] - grouped['time_first']) > pd.Timedelta('10 hours')
@@ -140,6 +152,15 @@ def get_answer_counts_top_10_contexts(options):
     answers = answers[answers['Context'].isin(top_contexts)]
     grouped = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).count()
     grouped = grouped[['id']]
+    return grouped
+
+
+@get_cached
+def get_answer_counts_by_user(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    grouped = answers.groupby(['user']).count()
+    grouped = grouped[['id']]
+    grouped.columns = ['answer_count']
     return grouped
 
 
@@ -160,6 +181,47 @@ def get_error_rate_per_contexts(options):
     grouped['Error rate'] = grouped['correct'].apply(lambda x: 1 - x)
     grouped = grouped[['Error rate']]
     return grouped
+
+
+@get_cached
+def get_context_size(options):
+    answers = get_answers_with_flashcards(options)
+    answers = answers.drop_duplicates(['item_asked_id', 'Context'])
+    grouped = answers.groupby(['Context']).count()
+    grouped['context_item_count'] = grouped['id']
+    grouped = grouped[['context_item_count']]
+    return grouped
+
+
+@get_cached
+def get_first_answer_order_per_contexts(options):
+    answers = get_answers_with_flashcards_and_orders(options)
+    top_contexts = answers.groupby('Context').count()[['id']].sort(
+        ['id'], ascending=[False]).head(10).reset_index()
+    top_contexts.columns = ['Context', 'answer_count']
+    answers = answers[answers['Context'].isin(top_contexts['Context'].tolist())]
+    uniuque_answers = answers.drop_duplicates(['user_id', 'Context'])
+    context_orders = uniuque_answers.groupby(['Context'])[['answer_order']].mean()
+    context_orders.reset_index(inplace=True)
+    context_orders = pd.merge(
+        context_orders,
+        top_contexts,
+        on=['Context'],
+    )
+    context_orders.sort(['answer_count'], ascending=True, inplace=True)
+    context_orders.set_index('Context', inplace=True)
+    context_orders = context_orders[['answer_order']]
+    context_orders.columns = ['First answer order']
+    """
+    context_orders = uniuque_answers.groupby(['Context', 'experiment_setup_id'])[['answer_order']].mean()
+    context_orders = context_orders.reset_index()
+    context_orders = context_orders.pivot(
+        index='Context',
+        columns='experiment_setup_id',
+        values='answer_order')
+    context_orders.rename(columns=AB_VALUES_SHORT, inplace=True)
+    """
+    return context_orders
 
 
 @get_cached
