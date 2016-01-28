@@ -2409,6 +2409,31 @@ class RatingByRollingResponseTimeAb(PlotCommand):
         return data
 
 
+class ResponseTimeHistogramByContext(PlotCommand):
+    adjust_bottom = 0.2
+    legend_loc = 'upper right'
+    legend_alpha = True
+    subplots_adjust = dict(
+        hspace=0.5,
+        wspace=0.3,
+        bottom=0.2,
+    )
+    kind='hist'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards(self.config)
+        answers['Context'] = answers['context_name'] + ' - ' + answers['term_type']
+        top_contexts = answers.groupby('Context').count()[['inserted']].sort(
+            ['inserted'], ascending=[False]).head(12).reset_index()['Context'].tolist()
+
+        data = []
+        for i in top_contexts:
+            answers_ab = answers[answers['experiment_setup_id'] == i]
+            answers_ab = answers_ab[['response_time']]
+            data.append([answers_ab, i])
+        return data
+
+
 class RatingByRollingResponseTimeAbAbsolute(PlotCommand):
     adjust_bottom = 0.2
     legend_loc = 'upper right'
