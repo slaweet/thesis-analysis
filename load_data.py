@@ -158,9 +158,18 @@ def get_answer_counts_top_10_contexts(options):
 @get_cached
 def get_answer_counts_by_user(options):
     answers = get_answers_with_flashcards_and_context_orders(options)
-    grouped = answers.groupby(['user']).count()
+    grouped = answers.groupby(['user_id']).count()
     grouped = grouped[['id']]
     grouped.columns = ['answer_count']
+    return grouped
+
+
+@get_cached
+def get_user_counts_by_answer(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    grouped = answers.groupby(['answer_order']).count()
+    grouped = grouped[['id']]
+    grouped.columns = ['user_count']
     return grouped
 
 
@@ -291,6 +300,8 @@ def get_answers(options, strip_times=False, strip_less_than_10=False):
     answers = read_csv(options.answers, col_types)
     answers['correct'] = answers['item_id'] == answers['item_answered_id']
     answers['metainfo_id'].fillna(0, inplace=True)
+    answers['context_id'].fillna(0, inplace=True)
+    answers['user_id'].fillna(0, inplace=True)
     if strip_times:
         answers = answers[answers['response_time'] > 0]
         answers = answers[answers['response_time'] < 30000]
@@ -299,7 +310,7 @@ def get_answers(options, strip_times=False, strip_less_than_10=False):
         grouped = grouped.reset_index()
         more10 = grouped[grouped['inserted'] >= 10]['user_id']
         answers = answers[answers['user_id'].isin(more10)]
-    ip_address = read_csv(options.data_dir + 'ip_address.csv')
+    ip_address = read_csv(os.path.join(options.data_dir, 'ip_address.csv'))
     answers = pd.merge(
         answers,
         ip_address,
@@ -355,9 +366,10 @@ def get_answers_with_flashcards(options):
 
 
 def get_flashcards(options):
-    flashcards = read_csv(options.data_dir + 'flashcards.csv')
+    flashcards = read_csv(os.path.join(options.data_dir, 'flashcards.csv'))
     flashcards['term_type'].fillna('', inplace=True)
-    flashcards['term_type'] = flashcards['term_type'].apply(lambda x: TERM_TYPES.get(x,x))
+    flashcards['term_type'] = flashcards['term_type'].apply(
+        lambda x: TERM_TYPES.get(x, x))
     contexts = flashcards.groupby(['context_name', 'term_type']).count()
     contexts = contexts[['item_id']]
     contexts = contexts.reset_index()
@@ -375,6 +387,26 @@ def get_flashcards(options):
     flashcards['Context'] = flashcards['context_name'] + ', ' + flashcards['term_type']
     flashcards = rename_contexts(flashcards)
     return flashcards
+
+
+def get_flashcards_with_difficulties(options):
+    flashcards = get_flashcards(options)
+    difficulty = read_csv(os.path.join(options.data_dir, 'difficulty.csv'))
+    flashcards = pd.merge(
+        difficulty,
+        flashcards,
+        on=['item_id'],
+    )
+    return flashcards
+
+
+@get_cached
+def get_flashcards_with_success_rate(options):
+    df = get_answers_with_flashcards(options)
+    df = df.groupby(['term_name', 'Context']).mean()[['correct']]
+    df.columns = ['Success rate']
+    df.reset_index(inplace=True)
+    return df
 
 
 def rename_contexts(flashcards):

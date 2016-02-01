@@ -25,7 +25,7 @@ grays = [
     "#b6b6b6",
     "#dbdbdb",
 ]
-sns.set_palette(sns.color_palette(grays))
+# sns.set_palette(sns.color_palette(grays))
 
 
 DATA_DIR = 'data/'
@@ -147,7 +147,9 @@ class PlotCommand(Command):
     grid = None
     legend_reverse = False
     ylabel = None
+    xlabel = None
     legend_fontsize = None
+    logx = False
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -166,6 +168,7 @@ class PlotCommand(Command):
             figsize=self.figsize,
             colormap=self.colormap,
             grid=self.grid,
+            logx=self.logx,
         )
         if self.edgecolor is not None:
             plot_params.update(dict(
@@ -250,6 +253,13 @@ class PlotCommand(Command):
                 ylabel = self.ylabel
             if ylabel is not None:
                 ax.set_ylabel(ylabel)
+
+            if type(self.xlabel) is list:
+                xlabel = self.xlabel[i]
+            else:
+                xlabel = self.xlabel
+            if xlabel is not None:
+                ax.set_xlabel(xlabel)
 
             if len(data_list) > 1:
                 plot_params.update(dict(
@@ -1518,7 +1528,7 @@ class IsNotAnsweredByAnswerOrderOnContext(AnswerOrder):
         return grouped
 
 
-class AnswerCountByOrder(AnswerOrder):
+class AnswerCountByOrderAb(AnswerOrder):
     kind = 'line'
     legend_loc = 'upper right'
 
@@ -2137,16 +2147,19 @@ class RatingByContextAb(DivisionCommand):
         return data
 
 
-class RatingBySuccess(DivisionCommand):
+class RatingBySuccess(PlotCommand):
     adjust_bottom = 0.2
-    legend_loc = 'upper right'
-    legend_alpha = True
+    legend_bbox = (1.2, 1.4)
     subplots_adjust = dict(
         hspace=0.7,
         wspace=0.3,
         bottom=0.2,
+        left=0.2,
+        top=0.8,
     )
     ylim = (0, 1)
+    figsize = (2.5, 3)
+    width = 0.8
 
     def get_data(self):
         ratings = load_data.get_rating(self.options)
@@ -2162,6 +2175,8 @@ class RatingBySuccess(DivisionCommand):
             right_on=['user_id'],
         )
         ratings['Success rate'] = ratings['correct'].map(lambda x: round(x, 1))
+        ratings = ratings[ratings['Success rate'] > 0.4]
+        ratings = ratings[ratings['Success rate'] < 1]
         ratings = ratings[['value', 'Success rate', 'user_id']]
         grouped = ratings.groupby(['value', 'Success rate']).count()
         grouped = grouped.reset_index()
@@ -2178,7 +2193,6 @@ class RatingBySuccess(DivisionCommand):
             grouped[c] = grouped[c] / grouped['All']
         grouped = grouped[value_columns]
         grouped.rename(columns=RATING_VALUES, inplace=True)
-        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
         return grouped
 
 
@@ -2335,7 +2349,7 @@ class RatingByRollingSuccessAbQuantile(PlotCommand):
     bins = 10
 
     def get_data(self):
-        ratings = load_data.get_ratratings_ab(self.options)
+        ratings = load_data.get_rating_with_rolling_success(self.options)
 
         data = []
         ab_values = sorted(ratings['experiment_setup_id'].unique().tolist())
@@ -3060,3 +3074,172 @@ class SurvivalByAb(SurvivalByContextAb):
         errors_table = grouped[['error']]
         data.append([result_table, 'C) return probability', errors_table])
         return data
+
+
+class UserCount(PlotCommand):
+    kind = 'line'
+    logx = True
+
+    def get_data(self):
+        data = load_data.get_answer_counts_by_user(self.options)
+        print len(data)
+        data.reset_index(inplace=True)
+        data['answer_count'] = data['answer_count'].apply(lambda x: x / 10)
+        data = data.groupby(['answer_count']).count()
+        data = data[['user_id']]
+        return data
+
+
+class AnswerCountByOrder(PlotCommand):
+    kind = 'line'
+    xlim = (0, 100)
+
+    def get_data(self):
+        data = load_data.get_user_counts_by_answer(self.options)
+        print len(data)
+        print data.head()
+        initial_user_count = data['user_count'].tolist()[0]
+        data['user_count'] = data['user_count'].apply(
+            lambda x: (x * 1.0) / initial_user_count)
+        data = data[:100]
+        return data
+
+
+class MostDifficultFlashcards(PlotCommand):
+    kind = 'barh'
+    subplots_adjust = dict(
+        left=0.4,
+    )
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        df.sort(['difficulty'], inplace=True)
+        df.set_index(['term_name'], inplace=True)
+        df = df[['difficulty', 'Context']]
+        df = df.head(10)
+        return df
+
+
+class MostEasyFlashcards(PlotCommand):
+    kind = 'barh'
+    subplots_adjust = dict(
+        left=0.4,
+    )
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        df.sort(['difficulty'], inplace=True, ascending=False)
+        df.set_index(['term_name'], inplace=True)
+        df = df[['difficulty', 'Context']]
+        df = df.head(10)
+        return df
+
+
+class FlashcardsDifficultyHistogram(PlotCommand):
+    kind = 'hist'
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        df.sort(['difficulty'], inplace=True, ascending=False)
+        df.set_index(['term_name'], inplace=True)
+        df = df[['difficulty']]
+        return df
+
+
+class MostSuccessfulFlashcards(PlotCommand):
+    kind = 'barh'
+    subplots_adjust = dict(
+        left=0.4,
+    )
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_success_rate(self.options)
+        df.sort(['Success rate'], inplace=True, ascending=False)
+        df.set_index(['term_name'], inplace=True)
+        df = df[['Success rate', 'Context']]
+        df = df.head(10)
+        return df
+
+
+class LeastSuccessfulFlashcards(PlotCommand):
+    kind = 'barh'
+    subplots_adjust = dict(
+        left=0.4,
+    )
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_success_rate(self.options)
+        df.sort(['Success rate'], inplace=True, ascending=True)
+        df.set_index(['term_name'], inplace=True)
+        df = df[['Success rate', 'Context']]
+        df = df.head(10)
+        return df
+
+
+class FlashcardsSuccessRateHistogram(PlotCommand):
+    kind = 'hist'
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_success_rate(self.options)
+        df.sort(['Success rate'], inplace=True, ascending=False)
+        df.set_index(['term_name'], inplace=True)
+        df = df[['Success rate']]
+        return df
+
+
+class FlashcardsPredictionHistogram(PlotCommand):
+    kind = 'hist'
+    figsize = (5, 3)
+    legend_bbox = (-10, 0)
+    subplots_adjust = dict(
+        bottom=0.2,
+        left=0.1,
+    )
+    xlabel = "Correct answer probability"
+    fontsize = 12
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        df.sort(['difficulty'], inplace=True, ascending=False)
+        df.set_index(['term_name'], inplace=True)
+        df['prediction'] = df['difficulty'].apply(
+            lambda x: 1 / (1 + math.e ** x))
+        df = df[['prediction']]
+        return df
+
+
+class PracticeVsReferenceSuccess(PlotCommand):
+    kind = 'line'
+
+    def get_data(self):
+        df = load_data.get_answers_with_flashcards_and_orders(self.options)
+        df['answer_order'] = df['answer_order'].apply(lambda x: x / 10)
+        df = df.groupby(['answer_order', 'metainfo_id']).mean()[['correct']]
+        df.reset_index(inplace=True)
+        df = df[df['answer_order'] <= 20]
+        df = df.pivot(
+            index='answer_order',
+            columns='metainfo_id',
+            values='correct')
+        return df
+
+
+class MostConfused(PlotCommand):
+    kind = 'barh'
+
+    def get_data(self):
+        fc = load_data.get_flashcards(self.options)
+        fc = fc[['item_id', 'term_name']]
+        term_names = fc.set_index(['item_id']).to_dict()['term_name']
+
+        df = load_data.get_answers_with_flashcards_and_orders(self.options)
+        df = df[df['correct'] == False]
+        df['term_answered_name'] = df['item_answered_id'].apply(
+            lambda x: term_names.get(x, x))
+        df = df.groupby(
+            ['term_name', 'term_answered_name', 'Context']).count()[['id']]
+        df.sort(['id'], inplace=True, ascending=False)
+        df.columns = ['Confusion count']
+        df = df.head(20)
+        print df
+        return df
