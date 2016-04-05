@@ -4,6 +4,7 @@
 import optparse
 import commands
 import utils
+import seaborn as sns
 
 DATA_DIR = 'data/'
 
@@ -70,6 +71,24 @@ def main():
 
     if options.data_dir != DATA_DIR:
         options.answers = options.answers.replace(DATA_DIR, options.data_dir)
+        paletes = {
+            'data/target_difficulty/': [
+                "#6d6d6d",
+                "#929292",
+                "#b6b6b6",
+                "#dbdbdb",
+            ],
+            'data/distractors-2/': [
+                "#ff1b1b",
+                "#008000",
+                "#5600ff",
+                "#ffbebe",
+                "#00f524",
+                "#73c5ef",
+            ],
+        }
+        if options.data_dir in paletes:
+            sns.set_palette(sns.color_palette(paletes[options.data_dir]))
 
     command = arguments[0]
     if command == 'all':

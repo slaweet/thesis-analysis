@@ -19,13 +19,6 @@ import numpy as np
 sns.set_style("white", {
     'legend.frameon': True,
 })
-grays = [
-    "#6d6d6d",
-    "#929292",
-    "#b6b6b6",
-    "#dbdbdb",
-]
-# sns.set_palette(sns.color_palette(grays))
 
 
 DATA_DIR = 'data/'
@@ -72,6 +65,18 @@ AB_VALUES = {
     15: '35%',
     16: '20%',
     17: '5%',
+    18: 'A-C',
+    19: 'C-A',
+    20: 'C-C',
+    21: 'A-A',
+    22: 'A-R',
+    23: 'C-R',
+    24: 'A-R',
+    25: 'C-A',
+    26: 'A-A',
+    27: 'A-4',
+    28: 'C-R',
+    29: 'C-4',
 }
 
 AB_VALUES_SHORT = {
@@ -84,6 +89,18 @@ AB_VALUES_SHORT = {
     15: 'C35',
     16: 'C20',
     17: 'C5',
+    18: 'A-C',
+    19: 'C-A',
+    20: 'C-C',
+    21: 'A-A',
+    22: 'A-R',
+    23: 'C-R',
+    24: 'A-R',
+    25: 'C-A',
+    26: 'A-A',
+    27: 'A-4',
+    28: 'C-R',
+    29: 'C-4',
 }
 
 
