@@ -1223,6 +1223,21 @@ class GuessByAnswerOrder(AnswerOrder):
         return grouped
 
 
+class GuessByAb(PlotCommand):
+    kind = 'barh'
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_orders(self.options)
+        grouped = answers.groupby(['experiment_setup_id', 'guess']).count()[['id']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='experiment_setup_id',
+            columns='guess',
+            values='id')
+        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        return grouped
+
+
 class UnansweredByAb(AnswerOrder):
     legend_loc = 'upper right'
 
