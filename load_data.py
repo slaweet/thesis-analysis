@@ -99,6 +99,37 @@ def get_answers_with_flashcards_and_orders(options):
 
 
 @get_cached
+def get_answers_with_next_stats(options):
+    answers_df = get_answers_with_flashcards_and_orders(options)
+    answers_df['next_time'] = answers_df['time'].shift(1)
+    answers_df['last'] = (answers_df['user_id'].shift(1) !=
+                          answers_df['user_id'])
+    answers_df['leave'] = answers_df['last']
+    """
+    answers_df['leave'] = ((answers_df['next_time'].apply(
+                            lambda x: pd.to_datetime(x)) -
+                            answers_df['time'].apply(
+                                lambda x: pd.to_datetime(x))) >
+                           pd.Timedelta('2 hours')) | answers_df['last']
+    """
+    answers_df['next_correct'] = (answers_df['correct'].shift(1) &
+                                  ~answers_df['last'])
+    answers_df.sort(['user_id', 'item_asked_id', 'time'],
+                    ascending=True, inplace=True)
+    answers_df['last_per_item'] = ((answers_df['item_asked_id'].shift(1) !=
+                                   answers_df['item_answered_id']) |
+                                   answers_df['last'])
+    answers_df['successN'] = (answers_df['correct'].shift(1) &
+                              ~answers_df['last_per_item'])
+    answers_df.ix[answers_df['last_per_item'], 'successN'] = np.nan
+    answers_df['repetition'] = ((answers_df['item_answered_id'].shift(1) ==
+                                answers_df['item_answered_id']) &
+                                ~answers_df['last_per_item'])
+    answers_df.ix[answers_df['last_per_item'], 'repetition'] = np.nan
+    return answers_df
+
+
+@get_cached
 def get_answers_with_flashcards_and_context_orders(options):
     answers_with_flashcards = get_answers_with_flashcards(options)
     answers_with_flashcards = answers_with_flashcards.sort(
@@ -158,7 +189,7 @@ def get_answer_counts_top_10_contexts(options):
 @get_cached
 def get_answer_counts_by_user(options):
     answers = get_answers_with_flashcards_and_context_orders(options)
-    grouped = answers.groupby(['user_id']).count()
+    grouped = answers.groupby(['user_id', 'experiment_setup_id']).count()
     grouped = grouped[['id']]
     grouped.columns = ['answer_count']
     return grouped
