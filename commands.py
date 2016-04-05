@@ -1244,17 +1244,19 @@ class UnansweredByAb(AnswerOrder):
 
 class LearningCurves(AnswerOrder):
     max_answer_order = 70
+    legend_loc = 'auto'
 
     def get_curve_data(self, answers):
         answers = answers[answers['metainfo_id'] == 1]
-        answers = answers[answers['answer_order'].isin(range(1, self.max_answer_order, 10))]
+        answers = answers[answers['answer_order'].isin(range(0, self.max_answer_order, 10))]
         grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
-        grouped = grouped[['correct']]
+        grouped['error_rate'] = 1 - grouped['correct']
+        grouped = grouped[['error_rate']]
         grouped = grouped.reset_index()
         grouped = grouped.pivot(
             index='answer_order',
             columns='experiment_setup_id',
-            values='correct')
+            values='error_rate')
         grouped.columns = [AB_VALUES[i] for i in grouped.columns]
         grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
         return grouped
