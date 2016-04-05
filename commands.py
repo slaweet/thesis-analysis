@@ -3278,6 +3278,25 @@ class MostConfused(PlotCommand):
         print df
         return df
 
+
+class CzRiversAnalysis(PlotCommand):
+    kind = "line"
+    ylim = (0, 1)
+
+    def get_data(self):
+        df = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        df_all = df[df['answer_order'] <= 100]
+        data = []
+        for c in ['Europe, state', 'CZ, river', 'US, state', 'Africa, state']:
+            df = df_all[df_all['Context'] == c]
+            df = df.groupby('answer_order').count()[['id']]
+            init_count = df.loc[0, 'id']
+            df['id'] = df['id'].apply(
+                lambda x: x / float(init_count))
+            data.append([df, c])
+        return data
+
+
 class SurvivalCurveByAb(PlotCommand):
     kind = "line"
     #ylim = (0, 1)
