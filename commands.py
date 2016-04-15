@@ -3079,12 +3079,64 @@ class FirstAnswerOrderOnContext(PlotCommand):
         return load_data.get_first_answer_order_per_contexts(self.options)
 
 
-class SurvivalByAb(SurvivalByContextAb):
+class EngagementByAb(SurvivalByContextAb):
+    kind = 'bar'
+    subplot_x_dim = 4
+    subplot_legend_index = None
+    subplots_adjust = dict(
+        left=0.05,
+        right=0.99,
+        top=0.80,
+        bottom=0.2,
+        wspace=0.4,
+    )
+    legend_bbox = (1.06, 1.25)
+    legend_ncol = 4
+    width = None
+
+    xlim = None
+    xticks = None
+    figsize = (8, 2.5)
+    grid = False
+    fontsize = 12
+    """
+    ylim = [
+        (0, 0.9),
+        (0, 0.18),
+        (0, 0.12),
+        (0, 0.7),
+    ]
+    """
+
+    def get_rating(self):
+        ratings = load_data.get_rating_with_maps(self.options)
+        grouped = ratings.groupby(['experiment_setup_id', 'value']).count()
+        grouped = grouped[['user_id']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='experiment_setup_id',
+            columns='value',
+            values='user_id')
+        value_columns = grouped.columns
+        grouped = grouped.fillna(0)
+        grouped['All'] = 0
+        for c in value_columns:
+            grouped['All'] += grouped[c]
+        for c in value_columns:
+            grouped[c] = grouped[c] / grouped['All']
+        grouped = grouped[value_columns]
+        grouped.rename(columns=RATING_VALUES, inplace=True)
+        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        grouped.sort_index(inplace=True)
+        grouped = grouped[['Appropriate']]
+        return grouped
+
     def get_data(self):
         answers_grouped = load_data.get_answer_counts_by_user(self.options)
+        print answers_grouped
         data = []
 
-        thresholds = [10, 30, 100]
+        thresholds = [10, 150]
         for threshold in thresholds:
             grouped_all = answers_grouped
             grouped_all['Survived'] = grouped_all['answer_count'].apply(lambda x: x >= threshold)
@@ -3093,9 +3145,10 @@ class SurvivalByAb(SurvivalByContextAb):
             grouped = grouped[['Survived', 'error']]
             grouped.index.names = ['']
             grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            grouped.sort_index(inplace=True)
             result_table = grouped[['Survived']]
             errors_table = grouped[['error']]
-            label = ('%d answers survival' % threshold)
+            label = ('%d answers\n survival' % threshold)
             data.append([result_table, label, errors_table])
 
         users_returning = load_data.get_users_returning_after_10_hours(self.options)
@@ -3104,9 +3157,11 @@ class SurvivalByAb(SurvivalByContextAb):
         grouped = grouped[['Survived', 'error']]
         grouped.index.names = ['']
         grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+        grouped.sort_index(inplace=True)
         result_table = grouped[['Survived']]
         errors_table = grouped[['error']]
-        data.append([result_table, 'C) return probability', errors_table])
+        data.append([result_table, 'Return probability', errors_table])
+        data.append([self.get_rating(), 'Explicit feedback'])
         return data
 
 
