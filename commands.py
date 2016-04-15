@@ -88,7 +88,7 @@ AB_VALUES_SHORT = {
     14: 'C50',
     15: 'C35',
     16: 'C20',
-    17: 'C5',
+    17: 'C05',
     18: 'A-C',
     19: 'C-A',
     20: 'C-C',
@@ -254,8 +254,12 @@ class PlotCommand(Command):
             if yticks is not None:
                 ax.yaxis.set_ticks(yticks)
 
-            if self.ylim is not None:
-                ax.set_ylim(self.ylim)
+            if type(self.ylim) is list:
+                ylim = self.ylim[i]
+            else:
+                ylim = self.ylim
+            if ylim is not None:
+                ax.set_ylim(ylim)
 
             if type(self.xlim) is list:
                 xlim = self.xlim[i]
@@ -289,9 +293,16 @@ class PlotCommand(Command):
             if len(data_list[i]) > 2:
                 deviations = data_list[i][2]
                 plot_params.update(dict(
-                    xerr=deviations,
                     ecolor=self.ecolor,
                 ))
+                if self.kind == 'barh':
+                    plot_params.update(dict(
+                        xerr=deviations,
+                    ))
+                else:
+                    plot_params.update(dict(
+                        yerr=deviations,
+                    ))
                 deviations.to_pickle(self.pickle_name(i, 'deviations'))
                 print 'ERRORS', data_list[i][2]
 
@@ -3087,7 +3098,7 @@ class EngagementByAb(SurvivalByContextAb):
         left=0.05,
         right=0.99,
         top=0.80,
-        bottom=0.2,
+        bottom=0.19,
         wspace=0.4,
     )
     legend_bbox = (1.06, 1.25)
@@ -3099,37 +3110,28 @@ class EngagementByAb(SurvivalByContextAb):
     figsize = (8, 2.5)
     grid = False
     fontsize = 12
-    """
     ylim = [
-        (0, 0.9),
-        (0, 0.18),
+        (0, 1),
+        (0, 0.2),
         (0, 0.12),
         (0, 0.7),
     ]
     """
+    """
 
     def get_rating(self):
         ratings = load_data.get_rating_with_maps(self.options)
-        grouped = ratings.groupby(['experiment_setup_id', 'value']).count()
-        grouped = grouped[['user_id']]
-        grouped = grouped.reset_index()
-        grouped = grouped.pivot(
-            index='experiment_setup_id',
-            columns='value',
-            values='user_id')
-        value_columns = grouped.columns
-        grouped = grouped.fillna(0)
-        grouped['All'] = 0
-        for c in value_columns:
-            grouped['All'] += grouped[c]
-        for c in value_columns:
-            grouped[c] = grouped[c] / grouped['All']
-        grouped = grouped[value_columns]
-        grouped.rename(columns=RATING_VALUES, inplace=True)
+        ratings = ratings[ratings['rating_order'] == 1]
+        ratings['appropriate'] = ratings['value'].apply(lambda x: x == 2)
+        grouped = self.add_binomial_confidence(
+            ratings, ['experiment_setup_id'], 'appropriate')
+        grouped.index.names = ['']
         grouped.rename(index=AB_VALUES_SHORT, inplace=True)
         grouped.sort_index(inplace=True)
-        grouped = grouped[['Appropriate']]
-        return grouped
+        result_table = grouped[['appropriate']]
+        errors_table = grouped[['error']]
+        errors_table.columns = result_table.columns
+        return [result_table, "Explicit feedback:\n appropriate", errors_table]
 
     def get_data(self):
         answers_grouped = load_data.get_answer_counts_by_user(self.options)
@@ -3148,6 +3150,7 @@ class EngagementByAb(SurvivalByContextAb):
             grouped.sort_index(inplace=True)
             result_table = grouped[['Survived']]
             errors_table = grouped[['error']]
+            errors_table.columns = result_table.columns
             label = ('%d answers\n survival' % threshold)
             data.append([result_table, label, errors_table])
 
@@ -3160,8 +3163,9 @@ class EngagementByAb(SurvivalByContextAb):
         grouped.sort_index(inplace=True)
         result_table = grouped[['Survived']]
         errors_table = grouped[['error']]
+        errors_table.columns = result_table.columns
         data.append([result_table, 'Return probability', errors_table])
-        data.append([self.get_rating(), 'Explicit feedback'])
+        data.append(self.get_rating())
         return data
 
 
