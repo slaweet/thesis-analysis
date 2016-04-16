@@ -3131,9 +3131,16 @@ class EngagementByAb(SurvivalByContextAb):
         result_table = grouped[['appropriate']]
         errors_table = grouped[['error']]
         errors_table.columns = result_table.columns
-        return [result_table, "Explicit feedback:\n appropriate", errors_table]
+        return [result_table, "Appropriate rating", errors_table]
 
     def get_data(self):
+        AB_VALUES_SHORT.update({
+            14: 'C50',
+            15: 'C65',
+            16: 'C80',
+            17: 'C95',
+        })
+
         answers_grouped = load_data.get_answer_counts_by_user(self.options)
         print answers_grouped
         data = []
