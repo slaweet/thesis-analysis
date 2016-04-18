@@ -1111,7 +1111,7 @@ class RatingByContextSize(PlotCommand):
     kind = 'area'
     stacked = True
     adjust_bottom = 0.1
-    ylim = [0, 1]
+    ylim = (0, 1)
     legend_loc = 'center'
     subplots_adjust = dict(
         hspace=0.4,
@@ -1270,7 +1270,7 @@ class UnansweredByAb(AnswerOrder):
 
 class LearningCurves(AnswerOrder):
     max_answer_order = 70
-    legend_loc = 'auto'
+    legend_loc = 'best'
 
     def get_curve_data(self, answers):
         answers = answers[answers['metainfo_id'] == 1]
@@ -1447,7 +1447,7 @@ class ErrorRateBySetOrderByContext(AnswerOrder):
         left=0.08,
         bottom=0.22,
     )
-    ylim = [0, 0.6]
+    ylim = (0, 0.6)
     marker = '+'
     figsize = (8, 2.3)
     grid = False
