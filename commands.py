@@ -167,6 +167,7 @@ class PlotCommand(Command):
     xlabel = None
     legend_fontsize = None
     logx = False
+    adjust_ylim = False
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -258,6 +259,16 @@ class PlotCommand(Command):
                 ylim = self.ylim[i]
             else:
                 ylim = self.ylim
+
+            if self.adjust_ylim:
+                minimum = df.min().min()
+                maximum = df.max().max()
+                if len(data_list[i]) > 2:
+                    deviations = data_list[i][2]
+                    minimum -= 1.5 * deviations.max().max()
+                    maximum += 1.5 * deviations.max().max()
+                ylim = (math.floor(minimum * 100) / 100.0, maximum)
+
             if ylim is not None:
                 ax.set_ylim(ylim)
 
@@ -3095,7 +3106,7 @@ class EngagementByAb(SurvivalByContextAb):
     subplot_x_dim = 4
     subplot_legend_index = None
     subplots_adjust = dict(
-        left=0.05,
+        left=0.06,
         right=0.99,
         top=0.80,
         bottom=0.19,
@@ -3111,13 +3122,12 @@ class EngagementByAb(SurvivalByContextAb):
     grid = False
     fontsize = 12
     ylim = [
-        (0, 1),
-        (0, 0.2),
-        (0, 0.12),
-        (0, 0.7),
+        (0.8, 0.9),
+        (0.1, 0.2),
+        (0.06, 0.115),
+        (0.5, 0.8),
     ]
-    """
-    """
+    adjust_ylim = True
 
     def get_rating(self):
         ratings = load_data.get_rating_with_maps(self.options)
