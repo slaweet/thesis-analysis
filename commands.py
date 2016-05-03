@@ -2902,6 +2902,7 @@ class SurvivalByContextAb(PlotCommand):
             columns='experiment_setup_id',
             values=values)
         grouped.rename(columns=AB_VALUES_SHORT, inplace=True)
+        self.legend_ncol = len(grouped.columns)
         grouped = self.sort_by_answer_count(grouped)
         if remove_labels:
             grouped.rename(index=self.top_contexts_removal, inplace=True)
@@ -2952,8 +2953,8 @@ class SurvivalByContextAb(PlotCommand):
 
 class StatsByContextAb(SurvivalByContextAb):
     kind = 'barh'
-    subplot_x_dim = 4
-    subplot_legend_index = 3
+    subplot_x_dim = 3
+    subplot_legend_index = 2
     subplots_adjust = dict(
         left=0.17,
         right=0.99,
@@ -2962,18 +2963,16 @@ class StatsByContextAb(SurvivalByContextAb):
     )
     legend_bbox = (1.06, 1.25)
     legend_ncol = 4
-    width = [0.5, 0.5, 0.5, 0.8]
+    width = [0.5, 0.5, 0.8]
 
     xlim = [
         (0, 22),
         (0, 125),
-        (0, 110),
         (0, 49),
     ]
     xticks = [
         np.arange(0, 100, 5),
         np.arange(0, 300, 30),
-        np.arange(0, 200, 25),
         np.arange(0, 100, 10),
     ]
     figsize = (8, 4)
@@ -3034,10 +3033,7 @@ class StatsByContextAb(SurvivalByContextAb):
 
         self.data.append([self.get_answer_counts(top_contexts), 'A) Number of\nanswers (%)'])
         self.data.append([self.get_context_size(top_contexts), 'B) Number of items '])
-        self.data.append([
-            self.get_first_answer_order_per_contexts(),
-            'C) Prior answers'])
-        self.data.append([self.get_error_rate(top_contexts), 'D) Error rate (%)'])
+        self.data.append([self.get_error_rate(top_contexts), 'C) Error rate (%)'])
         return self.data
 
 
@@ -3171,17 +3167,36 @@ class EngagementByAb(SurvivalByContextAb):
             label = ('%d answers\n survival' % threshold)
             data.append([result_table, label, errors_table])
 
-        users_returning = load_data.get_users_returning_after_10_hours(self.options)
-        grouped = self.add_binomial_confidence(
-            users_returning, ['experiment_setup_id'], 'Survived')
-        grouped = grouped[['Survived', 'error']]
-        grouped.index.names = ['']
-        grouped.rename(index=AB_VALUES_SHORT, inplace=True)
-        grouped.sort_index(inplace=True)
-        result_table = grouped[['Survived']]
-        errors_table = grouped[['error']]
-        errors_table.columns = result_table.columns
-        data.append([result_table, 'Return probability', errors_table])
+        data.append(self.get_returning())
+        data.append(self.get_rating())
+        return data
+
+
+class EngagementWithTimeByAb(EngagementByAb):
+
+    def get_data(self):
+        self.init()
+        answers_grouped = load_data.get_time_spent_by_user(self.options)
+        data = []
+
+        thresholds = [60, 10 * 60]
+        for threshold in thresholds:
+            grouped_all = answers_grouped
+            grouped_all['Survived'] = grouped_all['time_spent'].apply(
+                lambda x: x >= threshold)
+            grouped = self.add_binomial_confidence(
+                grouped_all, ['experiment_setup_id'], 'Survived')
+            grouped = grouped[['Survived', 'error']]
+            grouped.index.names = ['']
+            grouped.rename(index=AB_VALUES_SHORT, inplace=True)
+            grouped.sort_index(inplace=True)
+            result_table = grouped[['Survived']]
+            errors_table = grouped[['error']]
+            errors_table.columns = result_table.columns
+            label = ('%d minutes \n survival' % (threshold / 60))
+            data.append([result_table, label, errors_table])
+
+        data.append(self.get_returning())
         data.append(self.get_rating())
         return data
 
@@ -3414,4 +3429,26 @@ class SurvivalCurveByAb(PlotCommand):
             init_count = df.loc[0, i]
             df[i] = df[i].apply(
                 lambda x: x / float(init_count))
+        return df
+
+
+class SurvivalTimeCurveByAb(PlotCommand):
+    kind = "line"
+
+    def get_data(self):
+        df = load_data.get_time_spent_by_user(self.options)
+        df.reset_index(inplace=True)
+        df['time_spent'] = df['time_spent'].apply(lambda x: int(x))
+        feature_list = df['experiment_setup_id'].unique().tolist()
+        d = pd.DataFrame(1, index=np.arange(60 * 30), columns=feature_list)
+        d['id'] = d[feature_list[0]].cumsum()
+        for ab_group in feature_list:
+            group_max = df[df['experiment_setup_id'] == ab_group]['user_id'].count() * 1.0
+            d[ab_group] = d['id'].apply(
+                lambda x: df[df['time_spent'] > x][
+                    df['experiment_setup_id'] == ab_group]['user_id'].count() / group_max)
+        df = d[feature_list]
+        df.rename(columns=AB_VALUES_SHORT, inplace=True)
+        df = df.reindex_axis(sorted(df.columns), axis=1)
+        df.index.names = ['Time in system (seconds)']
         return df

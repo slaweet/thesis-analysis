@@ -149,6 +149,24 @@ def get_answers_with_flashcards_and_context_orders(options):
 
 
 @get_cached
+def get_answers_with_flashcards_and_time_since_last(options):
+    answers_df = get_answers_with_flashcards(options)
+    answers_df = answers_df.sort(
+        ['user_id', 'time'], ascending=True)
+    answers_df['prev_time'] = answers_df['time'].shift(-1)
+    answers_df['last'] = (answers_df['user_id'].shift(-1) !=
+                          answers_df['user_id'])
+    answers_df['time_delta'] = (answers_df['prev_time'].apply(
+                                lambda x: pd.to_datetime(x)) -
+                                answers_df['time'].apply(
+                                    lambda x: pd.to_datetime(x))
+                                ).apply(lambda x: x.item() / 1000000000.0
+                                        if x.item() is not None else None)
+    answers_df.time_delta.where(~answers_df['last'], 0, inplace=True)
+    return answers_df
+
+
+@get_cached
 def get_users_returning_to_context_after_10_hours(options):
     answers = get_answers_with_flashcards_and_context_orders(options)
     top_contexts = answers.groupby('Context').count()[['id']].sort(
@@ -192,6 +210,17 @@ def get_answer_counts_by_user(options):
     grouped = answers.groupby(['user_id', 'experiment_setup_id']).count()
     grouped = grouped[['id']]
     grouped.columns = ['answer_count']
+    return grouped
+
+
+@get_cached
+def get_time_spent_by_user(options):
+    answers = get_answers_with_flashcards_and_time_since_last(options)
+    answers = answers[answers['time_delta'] > 0]
+    answers = answers[answers['time_delta'] < 30]
+    grouped = answers.groupby(['user_id', 'experiment_setup_id']).sum()
+    grouped = grouped[['time_delta']]
+    grouped.columns = ['time_spent']
     return grouped
 
 
