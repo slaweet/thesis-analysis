@@ -3452,3 +3452,99 @@ class SurvivalTimeCurveByAb(PlotCommand):
         df = df.reindex_axis(sorted(df.columns), axis=1)
         df.index.names = ['Time in system (seconds)']
         return df
+
+
+class SurvivalTimeCurveByDivider(PlotCommand):
+    kind = "line"
+
+    def get_data(self):
+        df = load_data.get_time_spent_by_user(self.options)
+        df.reset_index(inplace=True)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers = load_data.get_answers(self.options)
+        positive_users = div.get_positive_users(answers)
+        df[new_column_name] = df['user_id'].isin(positive_users).apply(
+            lambda x: new_column_name if x else 'False')
+        df['time_spent'] = df['time_spent'].apply(lambda x: int(x))
+        feature_list = df[new_column_name].unique().tolist()
+        d = pd.DataFrame(1, index=np.arange(60 * 30), columns=feature_list)
+        d['id'] = d[feature_list[0]].cumsum()
+        for ab_group in feature_list:
+            group_max = df[df[new_column_name] == ab_group]['user_id'].count() * 1.0
+            d[ab_group] = d['id'].apply(
+                lambda x: df[df['time_spent'] > x][
+                    df[new_column_name] == ab_group]['user_id'].count() / group_max)
+        df = d[feature_list]
+        df.rename(columns=AB_VALUES_SHORT, inplace=True)
+        df = df.reindex_axis(sorted(df.columns), axis=1)
+        df.index.names = ['Time in system (seconds)']
+        return df
+
+
+class SurvivalTimeCurveByDividerByAb(PlotCommand):
+    kind = "line"
+
+    def get_data(self):
+        df = load_data.get_time_spent_by_user(self.options)
+        df.reset_index(inplace=True)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers = load_data.get_answers(self.options)
+        positive_users = div.get_positive_users(answers)
+        df[new_column_name] = df['user_id'].isin(positive_users).apply(
+            lambda x: new_column_name if x else 'False')
+        divider_values = df[new_column_name].unique().tolist()
+        df['time_spent'] = df['time_spent'].apply(lambda x: int(x))
+        df_all = df
+        data = []
+        for i in divider_values:
+            df = df_all[df_all[new_column_name] == i]
+            feature_list = df['experiment_setup_id'].unique().tolist()
+            d = pd.DataFrame(1, index=np.arange(60 * 30), columns=feature_list)
+            d['id'] = d[feature_list[0]].cumsum()
+            for ab_group in feature_list:
+                group_max = df[df['experiment_setup_id'] == ab_group]['user_id'].count() * 1.0
+                d[ab_group] = d['id'].apply(
+                    lambda x: df[df['time_spent'] > x][
+                        df['experiment_setup_id'] == ab_group]['user_id'].count() / group_max)
+            df = d[feature_list]
+            df.rename(columns=AB_VALUES_SHORT, inplace=True)
+            df = df.reindex_axis(sorted(df.columns), axis=1)
+            df.index.names = ['Time in system (seconds)']
+            data.append([df, new_column_name + ': ' + i])
+        return data
+
+
+class SurvivalTimeCurveByAbByDivider(PlotCommand):
+    kind = "line"
+
+    def get_data(self):
+        df = load_data.get_time_spent_by_user(self.options)
+        df.reset_index(inplace=True)
+        div = divider.Divider.get_divider(self.options)
+        new_column_name = div.column_name
+        answers = load_data.get_answers(self.options)
+        positive_users = div.get_positive_users(answers)
+        df[new_column_name] = df['user_id'].isin(positive_users).apply(
+            lambda x: new_column_name if x else 'False')
+        divider_values = sorted(df['experiment_setup_id'].unique().tolist())
+        df['time_spent'] = df['time_spent'].apply(lambda x: int(x))
+        df_all = df
+        data = []
+        for i in divider_values:
+            df = df_all[df_all['experiment_setup_id'] == i]
+            feature_list = df[new_column_name].unique().tolist()
+            d = pd.DataFrame(1, index=np.arange(60 * 30), columns=feature_list)
+            d['id'] = d[feature_list[0]].cumsum()
+            for ab_group in feature_list:
+                group_max = df[df[new_column_name] == ab_group]['user_id'].count() * 1.0
+                d[ab_group] = d['id'].apply(
+                    lambda x: df[df['time_spent'] > x][
+                        df[new_column_name] == ab_group]['user_id'].count() / group_max)
+            df = d[feature_list]
+            df.rename(columns=AB_VALUES_SHORT, inplace=True)
+            df = df.reindex_axis(sorted(df.columns), axis=1)
+            df.index.names = ['Time in system (seconds)']
+            data.append([df, AB_VALUES_SHORT[i]])
+        return data
