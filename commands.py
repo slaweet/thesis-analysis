@@ -3373,7 +3373,7 @@ class CzRiversAnalysis(PlotCommand):
         return data
 
 
-class SurvivalCurveByAb(PlotCommand):
+class SurvivalCurveOnContextByAb(PlotCommand):
     kind = "line"
     #ylim = (0, 1)
 
@@ -3386,6 +3386,28 @@ class SurvivalCurveByAb(PlotCommand):
             index='answer_order',
             columns='experiment_setup_id',
             values='id')
+        df.rename(columns=AB_VALUES_SHORT, inplace=True)
+        df = df.reindex_axis(sorted(df.columns), axis=1)
+        for i in df.columns:
+            init_count = df.loc[0, i]
+            df[i] = df[i].apply(
+                lambda x: x / float(init_count))
+        return df
+
+
+class SurvivalCurveByAb(PlotCommand):
+    kind = "line"
+    #ylim = (0, 1)
+
+    def get_data(self):
+        df = load_data.get_answers_with_flashcards_and_orders(self.options)
+        df = df[df['answer_order'] <= 100]
+        df = df.groupby(['answer_order', 'experiment_setup_id']).count()[['time']]
+        df.reset_index(inplace=True)
+        df = df.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='time')
         df.rename(columns=AB_VALUES_SHORT, inplace=True)
         df = df.reindex_axis(sorted(df.columns), axis=1)
         for i in df.columns:
