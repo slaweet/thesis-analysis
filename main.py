@@ -72,6 +72,7 @@ def main():
     if options.data_dir != DATA_DIR:
         options.answers = options.answers.replace(DATA_DIR, options.data_dir)
         paletes = {
+            'data/target_difficulty_its/': 'Blues_r',
             'data/target_difficulty/': [
                 "#6d6d6d",
                 "#929292",

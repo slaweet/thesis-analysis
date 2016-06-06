@@ -24,6 +24,7 @@ sns.set_style("white", {
 DATA_DIR = 'data/'
 PLOT_DIR = 'plot/'
 PARTIAL_DATA_PLOT_DIR = PLOT_DIR + 'partial_data/'
+TOP_CONTEXTS_COUNT = 6
 
 PLACE_TYPES = {
     0: 'unknown',
@@ -2911,7 +2912,8 @@ class SurvivalByContextAb(PlotCommand):
 
     def sort_by_answer_count(self, grouped):
         grouped.reset_index(inplace=True)
-        grouped['context_order'] = grouped['Context'].apply(lambda x: self.contexts_order[x])
+        grouped = grouped[grouped['Context'].isin(self.contexts_order)]
+        grouped['context_order'] = grouped['Context'].apply(lambda x: self.contexts_order.get(x))
         grouped.sort('context_order', inplace=True, ascending=False)
         grouped.drop('context_order', inplace=True, axis=1)
         grouped.set_index(['Context'], inplace=True)
@@ -2922,7 +2924,7 @@ class SurvivalByContextAb(PlotCommand):
         counts = load_data.get_answer_counts(self.options)
         top_contexts = counts.sort(
             ['answer_count'], ascending=False
-        ).head(10).reset_index()['Context'].tolist()
+        ).head(TOP_CONTEXTS_COUNT).reset_index()['Context'].tolist()
         self.contexts_order = dict(zip(top_contexts, range(len(top_contexts))))
         self.top_contexts_removal = dict([(c, '') for c in top_contexts])
         self.data = []
@@ -3026,7 +3028,7 @@ class StatsByContextAb(SurvivalByContextAb):
         counts = load_data.get_answer_counts(self.options)
         top_contexts = counts.sort(
             ['answer_count'], ascending=False
-        ).head(10).reset_index()['Context'].tolist()
+        ).head(TOP_CONTEXTS_COUNT).reset_index()['Context'].tolist()
         self.contexts_order = dict(zip(top_contexts, range(len(top_contexts))))
         self.top_contexts_removal = dict([(c, '') for c in top_contexts])
         self.data = []
