@@ -211,7 +211,7 @@ class PlotCommand(Command):
             plot_params.update(dict(
                 color=self.color,
             ))
-        if self.scatter_c is not None:
+        if self.scatter_x is not None:
             plot_params.update(dict(
                 x=self.scatter_x,
                 y=self.scatter_y,
@@ -2922,8 +2922,7 @@ class SurvivalByContextAb(PlotCommand):
 
     def sort_by_answer_count(self, grouped):
         grouped.reset_index(inplace=True)
-        grouped = grouped[grouped['Context'].isin(self.contexts_order)]
-        grouped['context_order'] = grouped['Context'].apply(lambda x: self.contexts_order.get(x))
+        grouped['context_order'] = grouped['Context'].apply(lambda x: self.contexts_order[x])
         grouped.sort('context_order', inplace=True, ascending=False)
         grouped.drop('context_order', inplace=True, axis=1)
         grouped.set_index(['Context'], inplace=True)
@@ -3283,6 +3282,23 @@ class FlashcardsDifficultyHistogram(PlotCommand):
         return df
 
 
+class ContextsDifficultyHistogram(PlotCommand):
+    kind = 'hist'
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        df = df.groupby(['Context']).mean()
+        df = df[['difficulty']]
+        df.reset_index(inplace=True)
+        df.sort(['difficulty'], inplace=True, ascending=True)
+        df['difficulty'] = df['difficulty'].map(
+            lambda x: bisect.bisect_left(
+                np.percentile(df['difficulty'], [33, 66, 100]), x
+            ))
+        df.set_index(['Context'], inplace=True)
+        return df
+
+
 class MostSuccessfulFlashcards(PlotCommand):
     kind = 'barh'
     subplots_adjust = dict(
@@ -3422,6 +3438,39 @@ class SurvivalCurveOnContextByAb(PlotCommand):
         return df
 
 
+class SurvivalCurveOnContextByAbAndContextDifficulty(PlotCommand):
+    kind = "line"
+    #ylim = (0, 1)
+    subplots_adjust = dict(
+        hspace=0.4,
+    )
+
+    def get_data(self):
+        df_all = load_data.get_answers_with_context_difficulties(self.options)
+        df_all = df_all[df_all['answer_order'] <= 100]
+        diff_groups = df_all['context_difficulty'].unique().tolist()
+        contexts = df_all.drop_duplicates(['Context']).set_index('Context')[['context_difficulty']]
+        print contexts
+        data = []
+        for diff in diff_groups:
+            df = df_all[df_all['context_difficulty'] == diff]
+            df = df.groupby(['answer_order', 'experiment_setup_id']).count()[['id']]
+            df.reset_index(inplace=True)
+            df = df.pivot(
+                index='answer_order',
+                columns='experiment_setup_id',
+                values='id')
+            df.rename(columns=AB_VALUES_SHORT, inplace=True)
+            df = df.reindex_axis(sorted(df.columns), axis=1)
+            for i in df.columns:
+                init_count = df.loc[0, i]
+                df[i] = df[i].apply(
+                    lambda x: x / float(init_count))
+            data.append([df, 'Context difficulty percentile: %i - %i' % (
+                diff * (100 / len(diff_groups)), (diff + 1) * (100 / len(diff_groups)))])
+        return data
+
+
 class SurvivalCurveByAb(PlotCommand):
     kind = "line"
     #ylim = (0, 1)
@@ -3446,13 +3495,14 @@ class SurvivalCurveByAb(PlotCommand):
 
 class SurvivalTimeCurveByAb(PlotCommand):
     kind = "line"
+    max_minutes = 30
 
     def get_data(self):
         df = load_data.get_time_spent_by_user(self.options)
         df.reset_index(inplace=True)
         df['time_spent'] = df['time_spent'].apply(lambda x: int(x))
         feature_list = df['experiment_setup_id'].unique().tolist()
-        d = pd.DataFrame(1, index=np.arange(60 * 30), columns=feature_list)
+        d = pd.DataFrame(1, index=np.arange(60 * self.max_minutes), columns=feature_list)
         d['id'] = d[feature_list[0]].cumsum()
         for ab_group in feature_list:
             group_max = df[df['experiment_setup_id'] == ab_group]['user_id'].count() * 1.0
@@ -3464,6 +3514,10 @@ class SurvivalTimeCurveByAb(PlotCommand):
         df = df.reindex_axis(sorted(df.columns), axis=1)
         df.index.names = ['Time in system (seconds)']
         return df
+
+
+class ShortTermSurvivalTimeCurveByAb(SurvivalTimeCurveByAb):
+    max_minutes = 2
 
 
 class SurvivalTimeCurveByDivider(PlotCommand):
@@ -3560,3 +3614,141 @@ class SurvivalTimeCurveByAbByDivider(PlotCommand):
             df.index.names = ['Time in system (seconds)']
             data.append([df, AB_VALUES_SHORT[i]])
         return data
+
+
+class StateByCity(PlotCommand):
+    kind = "bar"
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards(self.options)
+        answers = answers[answers['term_type'].isin(['state-by-city', 'city-by-state'])]
+        answers = answers[['id', 'term_name', 'term_type']]
+        answers = answers.groupby(['term_name', 'term_type']).count()
+        print answers
+
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        df = df[df['context_name'] == 'Europe']
+        df = df[df['term_type'].isin(['state', 'city', 'state-by-city', 'city-by-state'])]
+        df = df[['difficulty', 'term_name', 'term_type']]
+        capitals = load_data.get_capitals_dict(self.options)
+        df['term_name'] = df['term_name'].apply(lambda x: capitals.get(x, x))
+        df = df.pivot(
+            index='term_name',
+            columns='term_type',
+            values='difficulty')
+        df.sort(['city'], inplace=True)
+        return df
+
+
+class LearningCurvesOfPoor(AnswerOrder):
+    max_answer_order = 70
+    legend_loc = 'best'
+
+    def get_curve_data(self, answers):
+        answers = answers[answers['Context'] == "Europe, state"]
+        # answers = answers[answers['Context'] == "CZ, city"]
+        answers = answers[answers['metainfo_id'] == 1]
+        poor_users = answers[answers['answer_order'] == 0]['user_id'].unique().tolist()
+        print len(poor_users)
+        poor_users = answers[(answers['answer_order'] == 0) & (~answers['correct'])]['user_id'].unique().tolist()
+        poor_users = answers[(answers['answer_order'] == 10) & (~answers['correct']) & (answers['user_id'].isin(poor_users))]['user_id'].unique().tolist()
+        print len(poor_users)
+        answers = answers[answers['user_id'].isin(poor_users)]
+        answers = answers[answers['answer_order'].isin(range(0, self.max_answer_order, 10))]
+        grouped = answers.groupby(['answer_order', 'experiment_setup_id']).mean()
+        grouped['error_rate'] = 1 - grouped['correct']
+        grouped = grouped[['error_rate']]
+        grouped = grouped.reset_index()
+        grouped = grouped.pivot(
+            index='answer_order',
+            columns='experiment_setup_id',
+            values='error_rate')
+        grouped.columns = [AB_VALUES[i] for i in grouped.columns]
+        grouped = grouped.reindex_axis(sorted(grouped.columns), axis=1)
+        return grouped
+
+    def get_data(self):
+        answers = load_data.get_answers_with_flashcards_and_context_orders(self.options)
+        curve_data = self.get_curve_data(answers)
+        return curve_data
+
+
+class DistractorFrequency(PlotCommand):
+    kind = "scatter"
+    scatter_x = 'option_count'
+    scatter_y = 'asked_count'
+    scatter_c = 'Context_'
+
+    def get_data(self):
+        sns.set_palette(sns.color_palette("Set2", 10))
+        options = load_data.get_options(self.options)
+        flashcards = load_data.get_flashcards(self.options)
+        options = pd.merge(
+            options,
+            flashcards,
+            left_on=['item_id'],
+            right_on=['item_id'],
+        )
+        # print options.head()
+        grouped_options = options.groupby(['term_name']).count()
+        grouped_options = grouped_options[['fc_id']]
+        grouped_options.columns = [self.scatter_x]
+        grouped_options.reset_index(inplace=True)
+        answers = load_data.get_answers_with_flashcards(self.options)
+        # print answers.head()
+        top_contexts = answers.groupby('Context').count()[['id']].sort(
+            ['id'], ascending=[False]).head(12).reset_index()['Context'].tolist()
+        top_contexts = sorted(top_contexts)
+        # answers = answers[answers['experiment_setup_id'] == 25]
+        # answers = answers[answers['Context'] == "CZ, city"]
+        # answers = answers[answers['Context'] == "Europe, state"]
+        # answers = answers[answers['Context'] != "CZ, river"]
+        answers = answers[answers['Context'].isin(top_contexts)]
+        answers = answers[answers['guess'] != 0]
+        # print answers.head()
+        grouped = answers.groupby(['term_name', 'Context']).count()
+        grouped = grouped[['time']]
+        grouped.columns = [self.scatter_y]
+        grouped.reset_index(inplace=True)
+        grouped = pd.merge(
+            grouped_options,
+            grouped,
+            on=['term_name'],
+        )
+        grouped['Context_'] = grouped['Context'].apply(
+            lambda x: top_contexts.index(x))
+        print top_contexts
+        # grouped = grouped[grouped['asked_count'] > 100]
+        # grouped = grouped[grouped['option_count'] > 200]
+        grouped['asked_to_option_ratio'] = grouped['asked_count'] / grouped['option_count'].apply(lambda x: float(x))
+        grouped.sort(['asked_to_option_ratio'], ascending=[False], inplace=True)
+        return grouped
+
+
+class DistractorFrequencyB(PlotCommand):
+    kind = "scatter"
+    scatter_x = 'asked_count'
+    scatter_y = 'option_count'
+
+    def get_data(self):
+        options = load_data.get_options(self.options)
+        grouped_asked = options.groupby(['item_asked_id']).count()[['id']].reset_index()
+        grouped_options = options.groupby(['item_option_id']).count()[['id']].reset_index()
+        grouped = pd.merge(
+            grouped_asked,
+            grouped_options,
+            left_on=['item_asked_id'],
+            right_on=['item_option_id'],
+        )
+        grouped.rename(columns={'id_x': 'asked_count', 'id_y': 'option_count'}, inplace=True)
+        grouped['asked_to_option_ratio'] = grouped['asked_count'] / grouped['option_count'].apply(lambda x: float(x))
+        grouped.sort(['asked_to_option_ratio'], ascending=[True], inplace=True)
+        flashcards = load_data.get_flashcards(self.options)[['item_id', 'term_name']]
+        grouped = grouped[grouped['asked_count'] > 100]
+        grouped = pd.merge(
+            grouped,
+            flashcards,
+            left_on=['item_asked_id'],
+            right_on=['item_id'],
+        )
+        return grouped

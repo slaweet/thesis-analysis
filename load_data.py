@@ -6,6 +6,7 @@ import os
 from main import DATA_DIR
 import datetime
 import bisect
+import csv
 
 RATING_INTERVALS = [30, 70, 120, 200]
 
@@ -214,6 +215,15 @@ def get_answer_counts_by_user(options):
 
 
 @get_cached
+def get_answer_counts_by_user_and_context(options):
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    grouped = answers.groupby(['user_id', 'experiment_setup_id', 'Context']).count()
+    grouped = grouped[['id']]
+    grouped.columns = ['answer_count']
+    return grouped
+
+
+@get_cached
 def get_time_spent_by_user(options):
     answers = get_answers_with_flashcards_and_time_since_last(options)
     answers = answers[answers['time_delta'] > 0]
@@ -239,6 +249,26 @@ def get_answer_counts(options):
     grouped = answers.groupby(['Context']).count()
     grouped = grouped[['id']]
     grouped.columns = ['answer_count']
+    return grouped
+
+
+# @get_cached
+def get_answers_with_context_difficulties(options):
+    df = get_flashcards_with_difficulties(options)
+    df = df.groupby(['Context']).mean()
+    df.reset_index(inplace=True)
+    df.sort(['difficulty'], inplace=True, ascending=True)
+    df['context_difficulty'] = df['difficulty'].map(
+        lambda x: bisect.bisect_left(
+            np.percentile(df['difficulty'], [25, 50, 75, 100]), x
+        ))
+    df = df[['Context', 'context_difficulty']]
+    answers = get_answers_with_flashcards_and_context_orders(options)
+    grouped = pd.merge(
+        df,
+        answers,
+        on=['Context'],
+    )
     return grouped
 
 
@@ -425,8 +455,24 @@ def get_answers_with_flashcards(options):
     return answers_with_flashcards
 
 
+def get_options(options):
+    # items = read_csv(os.path.join(options.data_dir, 'items.csv'))
+    options = read_csv(os.path.join(options.data_dir, 'options.csv'))
+    """
+    print options.head()
+    options = pd.merge(
+        options,
+        items,
+        left_on='flashcard_id',
+        right_on='fc_id',
+    )
+    """
+    return options
+
+
 def get_flashcards(options):
     flashcards = read_csv(os.path.join(options.data_dir, 'flashcards.csv'))
+    flashcards.rename(columns={'id': 'fc_id'}, inplace=True)
     flashcards['term_type'].fillna('', inplace=True)
     flashcards['term_type'] = flashcards['term_type'].apply(
         lambda x: TERM_TYPES.get(x, x))
@@ -562,3 +608,10 @@ def parse_date(x):
 def read_csv(data_file, dtype=None):
     data = pd.read_csv(data_file, dtype=dtype)
     return data
+
+
+def get_capitals_dict(options):
+    with open(os.path.join(options.data_dir, 'capitals.csv'), mode='r') as infile:
+        reader = csv.reader(infile)
+        mydict = dict([(rows[1], rows[0]) for rows in reader])
+        return mydict
