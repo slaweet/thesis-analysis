@@ -149,6 +149,25 @@ def get_answers_with_flashcards_and_context_orders(options):
     return answers_with_flashcards
 
 
+#@get_cached
+def get_answers_with_flashcards_and_flashcard_orders(options):
+    answers_with_flashcards = get_answers_with_flashcards(options)
+    answers_with_flashcards = answers_with_flashcards.sort(
+        ['user_id', 'item_asked_id', 'time'], ascending=True)
+
+    answer_orders = []
+    order_by_user = {}
+    grouped = answers_with_flashcards.groupby(['user_id', 'item_asked_id'])
+    for i, g in grouped:
+        order_by_user[i] = 0
+        for j, row in g['item_id'].iteritems():
+            answer_orders.append(order_by_user[i])
+            order_by_user[i] += 1
+    answers_with_flashcards['answer_order'] = pd.Series(
+        answer_orders, index=answers_with_flashcards.index)
+    return answers_with_flashcards
+
+
 @get_cached
 def get_answers_with_flashcards_and_time_since_last(options):
     answers_df = get_answers_with_flashcards(options)
@@ -502,6 +521,21 @@ def get_flashcards_with_difficulties(options):
         difficulty,
         flashcards,
         on=['item_id'],
+    )
+    return flashcards
+
+
+def get_flashcards_with_difficulties_and_commonness(options):
+    flashcards = get_flashcards_with_difficulties(options)
+    flashcards.sort('difficulty', ascending=True, inplace=True)
+    flashcards.drop_duplicates(['term_name'], inplace=True)
+    commonness = read_csv(os.path.join(options.data_dir, 'commonness.csv'))
+    commonness.columns = ['item_id2', 'term_name', 'commonness']
+    commonness.drop_duplicates(['term_name'], inplace=True)
+    flashcards = pd.merge(
+        commonness,
+        flashcards,
+        on=['term_name'],
     )
     return flashcards
 

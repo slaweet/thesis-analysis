@@ -179,6 +179,7 @@ class PlotCommand(Command):
     legend_fontsize = None
     logx = False
     adjust_ylim = False
+    scatter_annotate = False
 
     def __init__(self, options, show_plots=True):
         self.options = options
@@ -330,6 +331,12 @@ class PlotCommand(Command):
 
             df.plot(**plot_params)
             df.to_pickle(self.pickle_name(i))
+
+            if self.scatter_annotate:
+                for row in df.iterrows():
+                    term_name = row[1]['term_name'].decode('utf-8').strip().split(';')[0]
+                    xy = (row[1]['difficulty'], row[1]['commonness'])
+                    ax.annotate(term_name, xy)
 
             if self.hatches is not None and (
                     type(self.hatches) is not list or self.hatches[i]):
@@ -3464,6 +3471,23 @@ class FlashcardDifficultyByContextHistogram(PlotCommand):
         data = sorted(data, key=lambda k: -k[2])
         data = [[d[0], d[1]] for d in data]
         return data
+
+
+class FlashcardDifficultyAndCommonnessCorrelation(PlotCommand):
+    kind = 'scatter'
+    scatter_x = 'difficulty'
+    scatter_y = 'commonness'
+    scatter_annotate = True
+    figsize = (32, 24)
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties_and_commonness(self.options)
+        # df.set_index('term_name', inplace=True)
+        df = df[['term_name', 'commonness', 'difficulty']]
+        df = df[df['term_name'].apply(lambda x: len(x)) > 3]
+        df['commonness'] = df['commonness'].apply(lambda x: math.log(x, 2)) # * df['term_name'].apply(lambda x: math.log(len(x), 2))
+        print df.head()
+        return df
 
 
 class SurvivalCurveOnContextByAbAndContextDifficulty(PlotCommand):
