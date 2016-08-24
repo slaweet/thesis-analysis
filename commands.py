@@ -3438,6 +3438,34 @@ class SurvivalCurveOnContextByAb(PlotCommand):
         return df
 
 
+class FlashcardDifficultyByContextHistogram(PlotCommand):
+    kind = "hist"
+    xlim = (-4, 4)
+    subplots_adjust = dict(
+        hspace=0.4,
+        bottom=0.02,
+        left=0.02,
+        right=0.98,
+        top=0.98,
+    )
+    figsize = (42, 34)
+
+    def get_data(self):
+        df = load_data.get_flashcards_with_difficulties(self.options)
+        data = []
+        contexts = df['Context'].unique().tolist()
+        for c in contexts:
+            diff = df[df['Context'] == c]
+            diff = diff[['difficulty']]
+            diff_range = diff['difficulty'].max() - diff['difficulty'].min()
+            # print diff.head()
+            if len(diff) > 2:
+                data.append([diff, c[:20] + '..', diff_range])
+        data = sorted(data, key=lambda k: -k[2])
+        data = [[d[0], d[1]] for d in data]
+        return data
+
+
 class SurvivalCurveOnContextByAbAndContextDifficulty(PlotCommand):
     kind = "line"
     #ylim = (0, 1)
