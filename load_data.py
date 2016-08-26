@@ -149,7 +149,7 @@ def get_answers_with_flashcards_and_context_orders(options):
     return answers_with_flashcards
 
 
-#@get_cached
+@get_cached
 def get_answers_with_flashcards_and_flashcard_orders(options):
     answers_with_flashcards = get_answers_with_flashcards(options)
     answers_with_flashcards = answers_with_flashcards.sort(

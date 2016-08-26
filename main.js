@@ -1,29 +1,42 @@
 
 function main() {
-  d3.csv("plot_data/anatomy/flashcard_difficulty_and_commonness_correlation_anatomy_answers-0.csv", function(flashcards) {
-    console.log(flashcards,'dc', data);
+  var dataPath = "plot_data/anatomy/flashcard_difficulty_and_commonness_correlation_anatomy_answers-0.csv";
+  var fieldX = 'difficulty';
+  var fieldY = 'commonness';
+  var plotId = 'plot_comm';
+  makeScatterPlot(dataPath, fieldX, fieldY, plotId);
 
-    var data = [preprocessData(flashcards)];
+  dataPath = "plot_data/anatomy/flashcard_difficulty_and_learning_rate_correlation_anatomy_answers-0.csv";
+  fieldY = 'learning rate';
+  plotId = 'plot_learn';
+  makeScatterPlot(dataPath, fieldX, fieldY, plotId);
+}
+
+function makeScatterPlot(dataPath, fieldX, fieldY, plotId) {
+  d3.csv(dataPath, function(flashcards) {
+
+    var data = [preprocessData(flashcards, fieldX, fieldY)];
     var dataByXY = {};
     for (var i = 0; i < flashcards.length; i++) {
       fc = flashcards[i];
-      dataByXY[fc.difficulty + ',' + fc.commonness] = fc;
+      dataByXY[fc[fieldX] + ',' + fc[fieldY]] = fc;
       fc.prediction = 1 / (1 + Math.exp(fc.difficulty));
     }
 
-      Plotly.newPlot('plot', data, {
-        height: window.innerHeight,
+      Plotly.newPlot(plotId, data, {
+        height: window.innerHeight * 0.8,
         xaxis: {
-          title: 'Difficulty',
+          title: fieldX,
           showgrid: false,
           zeroline: false
         },
         yaxis: {
-          title: 'Commonness',
-          showline: false
+          title: fieldY,
+          showline: false,
+          zeroline: false
         }
       });
-      var myPlot = document.getElementById('plot');
+      var myPlot = document.getElementById(plotId);
       myPlot.on('plotly_click', function(data){
           var pts = '';
           for(var i=0; i < data.points.length; i++){
@@ -103,13 +116,13 @@ Array.prototype.min = function() {
   return Math.min.apply(null, this);
 };
 
-function preprocessData(data) {
+function preprocessData(data, fieldX, fieldY) {
   return {
     y : data.map(function(row) {
-      return row.commonness;
+      return row[fieldY];
     }),
     x : data.map(function(row) {
-      return row.difficulty;
+      return row[fieldX];
     }),
     text : data.map(function(row) {
       return row.term_name; // + ' \n(' + row.context_name + ')';
