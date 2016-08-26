@@ -336,7 +336,7 @@ class PlotCommand(Command):
             if self.scatter_annotate:
                 for row in df.iterrows():
                     term_name = row[1]['term_name'].decode('utf-8').strip().split(';')[0]
-                    xy = (row[1]['difficulty'], row[1]['commonness'])
+                    xy = (row[1][self.scatter_x], row[1][self.scatter_y])
                     ax.annotate(term_name, xy)
 
             if self.hatches is not None and (
@@ -3471,6 +3471,35 @@ class FlashcardDifficultyByContextHistogram(PlotCommand):
                 data.append([diff, c[:20] + '..', diff_range])
         data = sorted(data, key=lambda k: -k[2])
         data = [[d[0], d[1]] for d in data]
+        return data
+
+
+class FlashcardDifficultyAndLearningRateCorrelation(PlotCommand):
+    kind = 'scatter'
+    scatter_x = 'difficulty'
+    scatter_y = 'learning rate'
+    scatter_annotate = True
+    figsize = (32, 24)
+
+    def get_data(self):
+        df = load_data.get_answers_with_flashcards_and_flashcard_orders(self.options)
+        df = df[df['answer_order'].isin([0, 1])]
+        df = df.groupby(['item_id', 'answer_order']).mean()[['correct']]
+        df = df.reset_index()
+        df = df.pivot(
+            index='item_id',
+            columns='answer_order',
+            values='correct')
+        df[self.scatter_y] = df[1] - df[0]
+        df = df[[self.scatter_y]]
+        df = df.reset_index()
+        print df.head(20)
+        df2 = load_data.get_flashcards_with_difficulties(self.options)
+        data = pd.merge(
+            df,
+            df2,
+            on=['item_id'],
+        )
         return data
 
 
