@@ -528,7 +528,7 @@ def get_flashcards_with_difficulties(options):
 def get_flashcards_with_difficulties_and_commonness(options):
     flashcards = get_flashcards_with_difficulties(options)
     flashcards.sort('difficulty', ascending=True, inplace=True)
-    flashcards.drop_duplicates(['term_name'], inplace=True)
+    # flashcards.drop_duplicates(['term_name'], inplace=True)
     commonness = read_csv(os.path.join(options.data_dir, 'commonness.csv'))
     commonness.columns = ['item_id2', 'term_name', 'commonness']
     commonness.drop_duplicates(['term_name'], inplace=True)

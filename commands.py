@@ -331,6 +331,7 @@ class PlotCommand(Command):
 
             df.plot(**plot_params)
             df.to_pickle(self.pickle_name(i))
+            df.to_csv(self.pickle_name(i).replace('.pdy', '.csv'))
 
             if self.scatter_annotate:
                 for row in df.iterrows():
@@ -3483,7 +3484,7 @@ class FlashcardDifficultyAndCommonnessCorrelation(PlotCommand):
     def get_data(self):
         df = load_data.get_flashcards_with_difficulties_and_commonness(self.options)
         # df.set_index('term_name', inplace=True)
-        df = df[['term_name', 'commonness', 'difficulty']]
+        # df = df[['term_name', 'commonness', 'difficulty']]
         df = df[df['term_name'].apply(lambda x: len(x)) > 3]
         df['commonness'] = df['commonness'].apply(lambda x: math.log(x, 2)) # * df['term_name'].apply(lambda x: math.log(len(x), 2))
         print df.head()
