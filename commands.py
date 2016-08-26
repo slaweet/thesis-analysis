@@ -335,7 +335,7 @@ class PlotCommand(Command):
 
             if self.scatter_annotate:
                 for row in df.iterrows():
-                    term_name = row[1]['term_name'].decode('utf-8').strip().split(';')[0]
+                    term_name = str(row[1]['term_name']).decode('utf-8').strip().split(';')[0]
                     xy = (row[1][self.scatter_x], row[1][self.scatter_y])
                     ax.annotate(term_name, xy)
 
@@ -3484,6 +3484,15 @@ class FlashcardDifficultyAndLearningRateCorrelation(PlotCommand):
     def get_data(self):
         df = load_data.get_answers_with_flashcards_and_flashcard_orders(self.options)
         df = df[df['answer_order'].isin([0, 1])]
+        df3 = df.groupby(['user_id', 'item_id']).count()[['correct']]
+        df3.columns = ['answer_count']
+        df3.reset_index(inplace=True)
+        df = pd.merge(
+            df,
+            df3,
+            on=['item_id', 'user_id'],
+        )
+        df = df[df['answer_count'] == 2]
         df = df.groupby(['item_id', 'answer_order']).mean()[['correct']]
         df = df.reset_index()
         df = df.pivot(
@@ -3493,7 +3502,6 @@ class FlashcardDifficultyAndLearningRateCorrelation(PlotCommand):
         df[self.scatter_y] = df[1] - df[0]
         df = df[[self.scatter_y]]
         df = df.reset_index()
-        print df.head(20)
         df2 = load_data.get_flashcards_with_difficulties(self.options)
         data = pd.merge(
             df,

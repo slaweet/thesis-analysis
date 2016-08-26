@@ -40,10 +40,18 @@ def main():
 
 def get_commonness(term):
     time.sleep(2)
-    page = urllib2.urlopen("https://search.seznam.cz/?q=" + term.replace(' ', '+')).read()
+    url = "https://search.seznam.cz/?q=" + term.replace(' ', '+')
+    page = urllib2.urlopen(url).read()
     soup = BeautifulSoup(page)
     div = soup.find("div", {"id": "resultCount"})
     if div is None:
+        div = soup.find("div", {"class": "resultsNotFound"})
+        if div is not None:
+            return 0
+        div = soup.find("div", {"class": "captchaForm"})
+        if div is not None:
+            print "Captcha asked!!!!!!!!!!!!!!!"
+            print url
         return None
     count_text = div.findAll("strong")[2].text
     count_text = re.sub(r'\D', '', count_text)

@@ -67,7 +67,7 @@ function showContexts(flashcards) {
           c.name + '</a></h3> ' +
         c.flashcards.map(function(fc) {
           return '<span class="label label-default" style="border-bottom: 5px solid ' +
-            scale(fc.prediction).hex() + '; margin-bottom: 10px">' +
+            scale(fc.prediction).hex() + ';">' +
             fc.term_name + '</span> ';
         }).join('&nbsp; ') +
         '</div>';
